@@ -1,4 +1,5 @@
 import LoginButton from "@/components/LoginButton";
+import Dashboard from "@/components/Dashboard";
 
 export default function Home() {
   return (
@@ -11,8 +12,19 @@ export default function Home() {
           Visualize your music library like never before. Explore genres, eras, and your taste evolution.
         </p>
 
-        <LoginButton />
+        <div className="w-full flex justify-center">
+          <LoginButton />
+        </div>
+        <DashboardWrapper />
       </main>
     </div>
   );
+}
+
+function DashboardWrapper() {
+  return (
+    <div className="w-full flex justify-center">
+      <Dashboard />
+    </div>
+  )
 }
