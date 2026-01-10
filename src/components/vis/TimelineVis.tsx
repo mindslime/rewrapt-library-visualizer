@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import { SpotifyTrack, SpotifyArtist } from "@/types/spotify";
+import { genreColors } from "@/utils/genreColors";
 
 interface TimelineVisProps {
     tracks: SpotifyTrack[];
@@ -63,7 +64,7 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
 
         const topGenres = Array.from(genreGlobals.entries())
             .sort((a, b) => b[1] - a[1])
-            .slice(0, 8)
+            .slice(0, 30)
             .map(d => d[0]);
 
         if (topGenres.length === 0) {
@@ -144,9 +145,11 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
             .domain([minY, maxY])
             .range([height - margin.bottom - margin.top, 0]);
 
-        const color = d3.scaleOrdinal()
-            .domain(topGenres)
-            .range(d3.schemeSpectral[8] || d3.schemeTableau10);
+        const color = (id: string) => {
+            const key = id.toLowerCase();
+            if (genreColors[key]) return genreColors[key];
+            return d3.scaleOrdinal(d3.schemeSpectral[8] || d3.schemeTableau10)(id);
+        };
 
         const area = d3.area()
             .curve(d3.curveBasis)
