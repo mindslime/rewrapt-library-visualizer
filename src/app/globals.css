@@ -18,14 +18,73 @@ body {
 
   0%,
   100% {
-    font-variation-settings: 'wght' 100, 'wdth' 25, 'GRAD' -200, 'slnt' 0;
+    font-variation-settings: 'wght' 100, 'wdth' 40, 'GRAD' -100, 'slnt' 0, 'XOPQ' 80, 'YOPQ' 72, 'XTRA' 323;
     transform: skewX(0deg);
-    opacity: 0.7;
   }
 
   50% {
-    font-variation-settings: 'wght' 1000, 'wdth' 151, 'GRAD' 150, 'slnt' -10;
+    font-variation-settings: 'wght' 1000, 'wdth' 500, 'GRAD' 150, 'slnt' -10, 'XOPQ' 175, 'YOPQ' 135, 'XTRA' 603;
     transform: skewX(-8deg);
+  }
+}
+
+/* Subtle variant for navbar - visible but not extreme */
+@keyframes mix-wave-subtle {
+
+  0%,
+  100% {
+    font-variation-settings: 'wght' 300, 'wdth' 85, 'GRAD' -50, 'slnt' 0, 'XOPQ' 80, 'YOPQ' 72, 'XTRA' 400;
+  }
+
+  50% {
+    font-variation-settings: 'wght' 800, 'wdth' 135, 'GRAD' 100, 'slnt' -3, 'XOPQ' 150, 'YOPQ' 120, 'XTRA' 550;
+  }
+}
+
+/* Staggered letter fade-in from left to right */
+@keyframes letter-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+
+  100% {
     opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Left-to-right wipe reveal for whole title */
+@keyframes title-wipe {
+  0% {
+    mask-position: 100% 0;
+    -webkit-mask-position: 100% 0;
+  }
+
+  100% {
+    mask-position: 0% 0;
+    -webkit-mask-position: 0% 0;
+  }
+}
+
+@keyframes fade-in-up {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }

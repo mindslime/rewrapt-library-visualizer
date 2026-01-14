@@ -2,9 +2,10 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useState, useRef } from "react";
-import { ArrowLeft, Music, Users, Library, Activity, Grid, List, LayoutGrid } from "lucide-react";
+import { ChevronLeft, Music, Users, Library, Activity, Grid, List, LayoutGrid } from "lucide-react";
 import GenreMap from "./vis/GenreMap";
 import TimelineVis from "./vis/TimelineVis";
+import PlaylistSkeleton from "./PlaylistSkeleton";
 import { fetchPlaylistTracks, fetchArtists, fetchLikedSongs, fetchUserPlaylists } from "@/lib/spotify-client";
 import { getCachedTracks, saveTracksToCache, checkTrackExists, getCachedArtists, saveArtistsToCache } from "@/lib/storage";
 import { GenreNode, SpotifyPlaylist, SpotifyTrack, SpotifyArtist } from "@/types/spotify";
@@ -343,7 +344,7 @@ export default function Dashboard({ onDetailViewChange, onProfileImageLoaded }: 
                             }}
                             className="p-2 hover:bg-white/10 rounded-full transition-colors"
                         >
-                            <ArrowLeft className="w-6 h-6" />
+                            <ChevronLeft className="w-6 h-6" />
                         </button>
                         <div>
                             <h2 className="text-xl font-bold">{viewTitle}</h2>
@@ -410,30 +411,43 @@ export default function Dashboard({ onDetailViewChange, onProfileImageLoaded }: 
         <div className="w-full max-w-6xl flex flex-col gap-8 mt-8 pb-20">
             {/* Header Stats */}
             <div className="bg-[#121212] p-8 rounded-xl">
-                <div className="flex items-center justify-between mb-8">
-                    <div>
+                <div className="flex items-center gap-8">
+                    {/* Profile Image - Left */}
+                    {profile?.images?.[0]?.url && (
+                        <img
+                            src={profile.images[0].url}
+                            className="w-32 h-32 rounded-full border-4 border-zinc-700 object-cover flex-shrink-0"
+                            alt="Profile"
+                        />
+                    )}
+
+                    {/* Text - Center */}
+                    <div className="flex-1">
                         <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500 mb-2">
                             {profile?.display_name ? `Hi, ${profile.display_name}` : "Welcome"}
                         </h2>
                         <p className="text-zinc-400">Visualize your musical landscape.</p>
                     </div>
-                    {profile?.images?.[0]?.url && (
-                        <img src={profile.images[0].url} className="w-16 h-16 rounded-full border-2 border-zinc-700" alt="Profile" />
-                    )}
-                </div>
 
-                <div className="flex gap-4">
-                    <button
-                        onClick={handleLibraryClick}
-                        className="flex items-center gap-3 px-6 py-4 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl transition-all hover:scale-105 shadow-lg shadow-green-900/20"
-                    >
-                        <Library className="w-6 h-6" />
-                        Analyze Whole Library
-                    </button>
+                    <div className="flex flex-col gap-3 flex-shrink-0">
+                        <button
+                            onClick={handleLibraryClick}
+                            className="relative group overflow-hidden p-[1px] rounded-xl transition-all hover:scale-105 shadow-lg hover:shadow-[0_0_20px_2px_rgba(16,185,129,0.5)]"
+                        >
+                            {/* Animated Conic Gradient Background */}
+                            <div className="absolute inset-[-1000%] bg-[conic-gradient(from_90deg_at_50%_50%,#000000_0%,#10b981_40%,#a7f3d0_50%,#10b981_60%,#000000_100%)] animate-[spin_4s_linear_infinite] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-                    <div className="flex items-center gap-2 px-6 py-4 bg-[#181818] rounded-xl text-zinc-300">
-                        <div className="text-xl font-bold text-white">{playlists.length}</div>
-                        <div className="text-sm">Playlists</div>
+                            {/* Inner Content */}
+                            <div className="relative flex items-center gap-3 px-6 py-4 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl h-full w-full backface-visibility-hidden">
+                                <Library className="w-6 h-6" />
+                                <span className="relative z-10">Analyze Liked Music</span>
+                            </div>
+                        </button>
+
+                        <div className="flex items-center justify-center gap-2 px-6 py-3 bg-[#1f1f1f] rounded-xl text-zinc-300">
+                            <div className="text-xl font-bold text-white">{playlists.length}</div>
+                            <div className="text-sm">Playlists</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -462,34 +476,46 @@ export default function Dashboard({ onDetailViewChange, onProfileImageLoaded }: 
 
                 {playlistViewMode === 'GRID' ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                        {playlists.map((playlist) => (
-                            <button
-                                key={playlist.id}
-                                onClick={() => handlePlaylistClick(playlist)}
-                                className="group text-left"
-                            >
-                                <div className="aspect-square bg-[#181818] rounded-lg overflow-hidden mb-3 shadow-lg group-hover:shadow-green-900/20 group-hover:scale-105 transition-all duration-300 relative">
-                                    {playlist.images?.[0]?.url ? (
-                                        <img
-                                            src={playlist.images[0].url}
-                                            alt={playlist.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-zinc-600">
-                                            <Music className="w-12 h-12" />
-                                        </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <div className="bg-green-500 text-black p-3 rounded-full translate-y-4 group-hover:translate-y-0 transition-transform">
-                                            <Music className="w-6 h-6" />
+                        {playlists.length === 0 ? (
+                            // Loading Skeletons
+                            Array.from({ length: 15 }).map((_, i) => (
+                                <PlaylistSkeleton key={i} />
+                            ))
+                        ) : (
+                            playlists.map((playlist, i) => (
+                                <button
+                                    key={playlist.id}
+                                    onClick={() => handlePlaylistClick(playlist)}
+                                    className="group text-left"
+                                    style={{
+                                        animation: `fade-in-up 0.6s ease-out forwards`,
+                                        animationDelay: `${i * 0.05}s`,
+                                        opacity: 0 // Start invisible
+                                    }}
+                                >
+                                    <div className="aspect-square bg-[#181818] rounded-lg overflow-hidden mb-3 shadow-lg group-hover:shadow-green-900/20 group-hover:scale-105 transition-all duration-300 relative">
+                                        {playlist.images?.[0]?.url ? (
+                                            <img
+                                                src={playlist.images[0].url}
+                                                alt={playlist.name}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-zinc-600">
+                                                <Music className="w-12 h-12" />
+                                            </div>
+                                        )}
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <div className="bg-green-500 text-black p-3 rounded-full translate-y-4 group-hover:translate-y-0 transition-transform">
+                                                <Music className="w-6 h-6" />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                                <h3 className="font-bold text-white truncate px-1 group-hover:text-green-400 transition-colors">{playlist.name}</h3>
-                                <p className="text-xs text-zinc-400 px-1 truncate">{playlist.tracks?.total} tracks</p>
-                            </button>
-                        ))}
+                                    <h3 className="font-bold text-white truncate px-1 group-hover:text-green-400 transition-colors">{playlist.name}</h3>
+                                    <p className="text-xs text-zinc-400 px-1 truncate">{playlist.tracks?.total} tracks</p>
+                                </button>
+                            ))
+                        )}
                     </div>
                 ) : (
                     <div className="flex flex-col gap-2">

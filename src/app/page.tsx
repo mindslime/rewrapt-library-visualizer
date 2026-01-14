@@ -4,15 +4,24 @@ import LoginButton from "@/components/LoginButton";
 import Dashboard from "@/components/Dashboard";
 import AnimatedTitle from "@/components/AnimatedTitle";
 import { useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 
 export default function Home() {
+  const { data: session } = useSession();
   const [isDetailView, setIsDetailView] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [contentVisible, setContentVisible] = useState(false);
   const heroRef = useRef<HTMLDivElement>(null);
   const headerTitleRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const btnSimpleRef = useRef<HTMLDivElement>(null);
   const btnFlipRef = useRef<HTMLDivElement>(null);
+
+  // Delayed fade-in for paragraph and button (after title animation stabilizes)
+  useEffect(() => {
+    const timer = setTimeout(() => setContentVisible(true), 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     // Thresholds
@@ -103,21 +112,42 @@ export default function Home() {
         className="w-full flex items-center justify-between p-4 px-6 fixed top-0 left-0 right-0 z-50 transition-colors duration-500 bg-transparent border-transparent sm:pointer-events-none"
       >
         {/* Mobile Title (Always visible on mobile) */}
-        <div className="sm:hidden font-bold text-xl tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 pointer-events-auto">
-          Spotify ReWrapt
+        {/* Mobile Title */}
+        <div className="sm:hidden font-bold text-xl tracking-tight pointer-events-auto">
+          {session ? (
+            <AnimatedTitle
+              text="ReWrapt"
+              variant="navbar"
+              className="text-xl text-white"
+            />
+          ) : (
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
+              Spotify ReWrapt
+            </span>
+          )}
         </div>
 
         {/* Desktop Title (Visible on Scroll) - Positioned Left */}
         <div
           ref={headerTitleRef}
-          className="hidden sm:block font-bold text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 pointer-events-auto transition-transform duration-75 ease-out will-change-transform will-change-opacity"
+          className="hidden sm:block font-bold text-2xl tracking-tight pointer-events-auto transition-transform duration-75 ease-out will-change-transform will-change-opacity"
           style={{
             opacity: 0,
-            transform: `translateY(20px)`,
+            transform: 'translateY(20px)',
             pointerEvents: 'none'
           }}
         >
-          Spotify ReWrapt
+          {session ? (
+            <AnimatedTitle
+              text="ReWrapt"
+              variant="navbar"
+              className="text-2xl text-white"
+            />
+          ) : (
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
+              Spotify ReWrapt
+            </span>
+          )}
         </div>
 
         {/* Sign Out Button (Always Top Right) - Enable pointer events on desktop too since header is pointer-events-none */}
@@ -137,29 +167,40 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-8 gap-8 sm:p-20 text-center mt-20 sm:mt-0">
+      <main className={`flex-1 flex flex-col items-center p-8 gap-8 sm:p-20 text-center mt-20 sm:mt-0 ${!session ? 'justify-center' : 'justify-start'}`}>
 
-        {/* Hero Section (Title + Text) - Sticky & Animated */}
-        <div
-          ref={heroRef}
-          className="sticky top-20 z-0 flex flex-col items-center gap-8 will-change-transform will-change-opacity"
-        // Initial styles are set by ref logic on mount/scroll
-        >
-          <div className="hidden sm:block">
+        {/* Hero Section (Title + Text) - Only show when NOT logged in */}
+        {!session && (
+          <div
+            ref={heroRef}
+            className="sticky top-20 z-0 flex flex-col items-center gap-8 will-change-transform will-change-opacity"
+          >
             <AnimatedTitle
               text="Spotify ReWrapt"
-              className="text-4xl tracking-tighter sm:text-7xl text-white"
+              className="text-5xl tracking-tighter sm:text-7xl text-white"
             />
-          </div>
 
-          <p className="text-xl text-zinc-400 max-w-md">
-            Visualize your music library like never before. Explore genres, eras, and your taste evolution.
-          </p>
-        </div>
+            <p
+              className="text-xl text-zinc-400 max-w-md"
+              style={{
+                opacity: contentVisible ? 1 : 0,
+                transition: 'opacity 1s ease-in-out'
+              }}
+            >
+              Visualize your music library like never before. Explore genres, eras, and your taste evolution.
+            </p>
+          </div>
+        )}
 
         {/* Content Overlay - Higher Z-Index to scroll OVER the sticky hero */}
         <div className="w-full flex flex-col items-center gap-8 relative z-10">
-          <div className="w-full flex justify-center">
+          <div
+            className="w-full flex justify-center"
+            style={{
+              opacity: contentVisible ? 1 : 0,
+              transition: 'opacity 1s ease-in-out'
+            }}
+          >
             <LoginButton action="login" />
           </div>
           <DashboardWrapper onDetailViewChange={setIsDetailView} onProfileImageLoaded={setProfileImage} />
