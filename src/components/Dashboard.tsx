@@ -9,6 +9,7 @@ import PlaylistSkeleton from "./PlaylistSkeleton";
 import { fetchPlaylistTracks, fetchArtists, fetchLikedSongs, fetchUserPlaylists } from "@/lib/spotify-client";
 import { getCachedTracks, saveTracksToCache, checkTrackExists, getCachedArtists, saveArtistsToCache } from "@/lib/storage";
 import { GenreNode, SpotifyPlaylist, SpotifyTrack, SpotifyArtist } from "@/types/spotify";
+import { transformTracksToNodes } from "@/utils/spotifyTransform";
 
 interface DashboardProps {
     onDetailViewChange?: (isOpen: boolean) => void;
@@ -113,72 +114,11 @@ export default function Dashboard({ onDetailViewChange, onProfileImageLoaded }: 
             setAllTracks(tracks);
             setArtistDetails(artistMap);
 
-            const genreCounts = new Map<string, {
-                count: number;
-                artists: Set<string>;
-                albums: Set<string>;
-                artistTracks: Map<string, number>;
-                artistTrackObjects: Map<string, SpotifyTrack[]>;
-            }>();
+            // 4. Convert to Nodes (Using new "Spotify ID" transform)
 
-            tracks.forEach(track => {
-                track.artists.forEach(trackArtist => {
-                    const fullArtist = artistMap.get(trackArtist.id);
-                    if (fullArtist && fullArtist.genres) {
-                        fullArtist.genres.forEach(genre => {
-                            const entry = genreCounts.get(genre) || {
-                                count: 0,
-                                artists: new Set(),
-                                albums: new Set(),
-                                artistTracks: new Map<string, number>(),
-                                artistTrackObjects: new Map<string, SpotifyTrack[]>()
-                            };
-                            entry.count += 1;
-                            entry.artists.add(fullArtist.name);
-                            if (track.album) {
-                                entry.albums.add(track.album.name);
-                            }
 
-                            const currentArtistCount = entry.artistTracks.get(fullArtist.name) || 0;
-                            entry.artistTracks.set(fullArtist.name, currentArtistCount + 1);
-
-                            const currentObjects = entry.artistTrackObjects.get(fullArtist.name) || [];
-                            currentObjects.push(track);
-                            entry.artistTrackObjects.set(fullArtist.name, currentObjects);
-
-                            genreCounts.set(genre, entry);
-                        });
-                    }
-                });
-            });
-
-            // 4. Convert to Nodes
-            const nodes: GenreNode[] = Array.from(genreCounts.entries()).map(([name, data]) => {
-                const children: GenreNode[] = Array.from(data.artistTracks.entries()).map(([artistName, count]) => ({
-                    id: artistName,
-                    name: artistName,
-                    count: count,
-                    artists: [artistName],
-                    artistCount: 1,
-                    albumCount: 0,
-                    tracks: data.artistTrackObjects.get(artistName) || [],
-                    topTracks: []
-                })).sort((a, b) => b.count - a.count);
-
-                return {
-                    id: name,
-                    name,
-                    count: data.count,
-                    artists: Array.from(data.artists),
-                    artistCount: data.artists.size,
-                    albumCount: data.albums.size,
-                    children: children,
-                    topTracks: [],
-                    tracks: Array.from(data.artistTrackObjects.values()).flat()
-                };
-            })
-                .sort((a, b) => b.count - a.count)
-                .slice(0, 100);
+            // 4. Convert to Nodes (Using new "Spotify ID" transform)
+            const nodes = transformTracksToNodes(tracks, artistMap);
 
             setGenreData(nodes);
 
