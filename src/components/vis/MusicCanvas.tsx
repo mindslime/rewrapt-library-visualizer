@@ -20,6 +20,8 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
 
     // Zoom State
     const transformRef = useRef(d3.zoomIdentity); // { k, x, y }
+    const savedGlobalTransform = useRef(d3.zoomIdentity);
+    const prevMode = useRef(mode);
 
     // Init Simulation
     const { simulationRef, nodesRef, containerRadius } = useMusicSimulation({
@@ -56,6 +58,56 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
         const context = canvas.getContext('2d');
         if (!context) return;
 
+        // Hover State (Local to effect)
+        let hoveredNode: SimulationNode | null = null;
+
+        // --- ZOOM STATE MANAGEMENT ---
+        if (mode !== prevMode.current) {
+            if (prevMode.current === 'GLOBAL' && mode === 'CLUSTER') {
+                savedGlobalTransform.current = transformRef.current;
+                transformRef.current = d3.zoomIdentity;
+            } else if (prevMode.current === 'CLUSTER' && mode === 'GLOBAL') {
+                transformRef.current = savedGlobalTransform.current;
+            }
+            prevMode.current = mode;
+        }
+
+        const getHoveredNode = (e: MouseEvent): SimulationNode | null => {
+            const rect = canvas.getBoundingClientRect();
+            const { k, x, y } = transformRef.current;
+            const mx = (e.clientX - rect.left - x) / k;
+            const my = (e.clientY - rect.top - y) / k;
+
+            for (const node of nodesRef.current) {
+                const dx = mx - node.x!;
+                const dy = my - node.y!;
+                if (dx * dx + dy * dy < node.radius * node.radius) {
+                    return node;
+                }
+            }
+            return null;
+        };
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const hovered = getHoveredNode(e);
+            hoveredNode = hovered;
+
+            if (hovered) {
+                canvas.style.cursor = 'pointer';
+            } else {
+                canvas.style.cursor = 'default';
+            }
+        };
+
+        const handleClick = (e: MouseEvent) => {
+            const clicked = getHoveredNode(e);
+            if (clicked) {
+                onNodeClick?.(clicked.data);
+            } else {
+                onBackgroundClick?.();
+            }
+        };
+
         const render = () => {
             if (!context) return;
             const width = canvas.width;
@@ -67,29 +119,18 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
             // Clear
             context.clearRect(0, 0, width, height);
 
-            // --- TRANSFORM START ---
             context.save();
             context.translate(x, y);
             context.scale(k, k);
 
             // 1. Draw Pillars (Background Ring)
             if (mode === 'GLOBAL') {
-                // Use the dynamic radius from simulation, or fallback
                 const ringRadius = containerRadius || Math.min(dimensions.width, dimensions.height) * 0.45;
 
-                // Create Conic Gradient for Border
-                // Rotate by -90deg (-PI/2) so 0 is at top? No, standard is 0 at 3 o'clock.
-                // Our pillars: Pop is (0, -1) -> -PI/2 (top). 
-                // Let's align gradient start to match.
-                const gradient = context.createConicGradient(0, center.x, center.y); // Start at 0 (3 o'clock standard)
-
-                // We need sorted stops 0-1.
-                // Compute angles for each pillar.
+                // Conic Gradient
+                const gradient = context.createConicGradient(0, center.x, center.y);
                 const stops = PILLARS.map(p => {
                     const c = PILLAR_COORDINATES[p];
-                    // atan2(y, x): y grows down? Yes in canvas.
-                    // Pop: (0, -1) -> atan2(-1, 0) = -PI/2.
-                    // normalize to 0-1 range (0 to 2PI)
                     let angle = Math.atan2(c.y, c.x);
                     if (angle < 0) angle += Math.PI * 2;
                     return { angle, color: c.color };
@@ -98,22 +139,18 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
                 stops.forEach(stop => {
                     gradient.addColorStop(stop.angle / (Math.PI * 2), stop.color);
                 });
-                // Close the loop
                 gradient.addColorStop(1, stops[0].color);
 
                 context.beginPath();
                 context.strokeStyle = gradient;
-                context.lineWidth = 2 / k; // Slightly thicker
+                context.lineWidth = 2 / k;
                 context.arc(center.x, center.y, ringRadius, 0, Math.PI * 2);
                 context.stroke();
 
                 PILLARS.forEach(pillar => {
                     const coords = PILLAR_COORDINATES[pillar];
-                    // Calculate angle for radial positioning (center of the word)
                     let angle = Math.atan2(coords.y, coords.x);
-
                     const text = pillar.toUpperCase();
-                    // Distance from center for the TEXT BASELINE
                     const radius = ringRadius + 24;
 
                     context.font = `bold 14px "Geist Sans", sans-serif`;
@@ -122,18 +159,11 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
                     context.fillStyle = coords.color;
                     context.globalAlpha = 0.8;
 
-                    // Measure width to center alignment
                     const totalWidth = context.measureText(text).width;
                     const totalAngle = totalWidth / radius;
-
-                    // Flip check: If y > 0 (Bottom Half), we flip 180 and reverse curve direction
                     const isFlipped = coords.y > 0;
 
                     context.save();
-
-                    // Loop through chars
-                    // If flipped (Bottom): Letters go visually L->R but Angle DECREASES (CW).
-                    // So start at Positive Offset (Left) and go Negative (Right).
                     const startOffset = isFlipped ? (totalAngle / 2) : (-totalAngle / 2);
                     let currentAngleOffset = startOffset;
 
@@ -141,48 +171,26 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
                         const char = text[i];
                         const charWidth = context.measureText(char).width;
                         const charAlpha = charWidth / radius;
-
-                        let charAngle;
-                        if (isFlipped) {
-                            // Go Backwards: Current - HalfWidth
-                            charAngle = currentAngleOffset - (charAlpha / 2);
-                        } else {
-                            // Go Forwards: Current + HalfWidth
-                            charAngle = currentAngleOffset + (charAlpha / 2);
-                        }
+                        let charAngle = isFlipped ?
+                            currentAngleOffset - (charAlpha / 2) :
+                            currentAngleOffset + (charAlpha / 2);
 
                         context.save();
-
-                        // 1. Rotate to position
                         context.translate(center.x, center.y);
                         context.rotate(angle + charAngle);
-
-                        // 2. Move out
                         context.translate(radius, 0);
-
-                        // 3. Tangent Rotate
-                        if (isFlipped) {
-                            // Smiling curve: Letter Top points Inward (towards Center)
-                            context.rotate(-Math.PI / 2);
-                        } else {
-                            // Frowning curve: Letter Top points Outward
-                            context.rotate(Math.PI / 2);
-                        }
+                        if (isFlipped) context.rotate(-Math.PI / 2);
+                        else context.rotate(Math.PI / 2);
 
                         context.fillText(char, 0, 0);
                         context.restore();
 
-                        // Advance
-                        if (isFlipped) {
-                            currentAngleOffset -= charAlpha;
-                        } else {
-                            currentAngleOffset += charAlpha;
-                        }
+                        if (isFlipped) currentAngleOffset -= charAlpha;
+                        else currentAngleOffset += charAlpha;
                     }
-
                     context.restore();
 
-                    // Draw the Dot separately (at the ring edge, not text pos)
+                    // Dot
                     const px = center.x + coords.x * ringRadius;
                     const py = center.y + coords.y * ringRadius;
                     context.beginPath();
@@ -197,36 +205,88 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
             // 2. Draw Nodes
             simNodes.sort((a, b) => b.radius - a.radius);
 
-            simNodes.forEach(node => {
-                // Animate Radius
+            const drawNode = (node: SimulationNode, isHovered: boolean) => {
+                // 1. Animate Physics Radius (Entry/Exit)
                 const diff = node.radius - node.currentRadius;
                 if (Math.abs(diff) > 0.1) node.currentRadius += diff * 0.1;
                 else node.currentRadius = node.radius;
 
+                // 2. Animate Hover Scale (The "Raising" Effect)
+                const targetScale = isHovered ? 1.5 : 1.0;
+                // Init if missing (handle undefined)
+                if (typeof node.currentScale === 'undefined') node.currentScale = 1.0;
+
+                // Interpolate
+                const scaleDiff = targetScale - node.currentScale;
+                if (Math.abs(scaleDiff) > 0.01) node.currentScale += scaleDiff * 0.3; // Snappy speed
+                else node.currentScale = targetScale;
+
+                const drawRadius = node.currentRadius * node.currentScale;
+
+                // 3. Calculate "Lift" for Shadow
+                // As scale goes 1.0 -> 1.5, lift goes 0 -> 1
+                const lift = (node.currentScale - 1.0) * 2.0;
+                const shadowBlur = 4 + (lift * 25);
+                const shadowOffsetY = lift * 12;
+
                 context.beginPath();
-                context.arc(node.x!, node.y!, node.currentRadius, 0, Math.PI * 2);
+                context.arc(node.x!, node.y!, drawRadius, 0, Math.PI * 2);
                 context.fillStyle = node.color;
 
-                context.globalAlpha = 0.8;
+                context.globalAlpha = isHovered ? 1 : 0.8;
+
+                // Shadow
+                context.shadowColor = "black";
+                context.shadowBlur = shadowBlur;
+                context.shadowOffsetY = shadowOffsetY;
+
                 context.fill();
 
-                context.strokeStyle = "rgba(255, 255, 255, 0.5)";
-                context.lineWidth = 1 / k;
+                // 3D "Dome" Highlight (Radial Gradient)
+                // Simulates a light source above the center
+                if (isHovered || node.currentScale > 1.1) {
+                    const gradient = context.createRadialGradient(
+                        node.x!, node.y!, 0,
+                        node.x!, node.y!, drawRadius
+                    );
+                    gradient.addColorStop(0, "rgba(255, 255, 255, 0.2)"); // Subtle highlight
+                    gradient.addColorStop(0.6, "rgba(255, 255, 255, 0.05)");
+                    gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+                    context.fillStyle = gradient;
+                    context.shadowColor = "transparent";
+                    context.shadowOffsetY = 0;
+                    context.fill();
+                }
+
+                // Reset Shadow for Stroke/Text
+                context.shadowColor = "transparent";
+                context.shadowBlur = 0;
+                context.shadowOffsetY = 0;
+
+                // Border: Glowy White Shadow
+                context.save();
+                context.shadowColor = "rgba(255, 255, 255, 0.6)";
+                context.shadowBlur = isHovered ? 15 : 5;
+                context.strokeStyle = "rgba(255, 255, 255, 0.1)";
+                context.lineWidth = (isHovered ? 2 : 1) / k;
                 context.stroke();
+                context.restore();
 
                 context.globalAlpha = 1;
 
                 // Labels
-                // Only render if large enough
-                const visualSize = node.currentRadius * k;
-                if (visualSize > 15) {
-                    const fontSize = Math.max(4, Math.min(node.currentRadius * 0.4, 100));
-                    context.font = `bold ${fontSize}px sans-serif`;
-                    context.textAlign = "center";
-                    context.textBaseline = "middle";
+                // Render if large enough OR if trying to lift
+                const visualSize = node.radius * k; // Check unscaled size for layout stability
+                if (visualSize > 15 || node.currentScale > 1.1) {
 
-                    // Multi-line Word Wrap
-                    const maxWidth = node.currentRadius * 1.8; // 90% of diameter
+                    // --- STABLE LAYOUT CALCULATION ---
+                    const stableRadius = node.radius;
+                    const baseFontSize = Math.max(4, Math.min(stableRadius * 0.4, 100));
+                    const stableMaxWidth = stableRadius * 1.8;
+
+                    context.font = `bold ${baseFontSize}px sans-serif`;
+
                     const words = node.name.split(' ');
                     const lines: string[] = [];
                     let currentLine = words[0];
@@ -234,7 +294,7 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
                     for (let i = 1; i < words.length; i++) {
                         const word = words[i];
                         const width = context.measureText(currentLine + " " + word).width;
-                        if (width < maxWidth) {
+                        if (width < stableMaxWidth) {
                             currentLine += " " + word;
                         } else {
                             lines.push(currentLine);
@@ -243,22 +303,68 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
                     }
                     lines.push(currentLine);
 
+                    // --- DRAWING ---
+                    context.save();
+                    context.translate(node.x!, node.y!); // Move to center
+
+                    // Scale the font size
+                    const drawFontSize = baseFontSize * node.currentScale;
+                    context.font = `bold ${drawFontSize}px sans-serif`;
+                    context.textAlign = "center";
+                    context.textBaseline = "middle";
                     context.fillStyle = "white";
-                    context.shadowColor = "black";
+
+                    // Soft shadow for text readibility
+                    context.shadowColor = "rgba(0, 0, 0, 0.5)";
                     context.shadowBlur = 4;
 
-                    // Render lines centered
-                    const lineHeight = fontSize * 1.1;
-                    const totalHeight = lines.length * lineHeight;
-                    let startY = node.y! - (totalHeight / 2) + (lineHeight / 2);
+                    // Dynamic Line Height ("Stretch" Effect)
+                    const spacingFactor = 1.1 + (node.currentScale - 1.0) * 0.4;
+                    const lineHeight = drawFontSize * spacingFactor;
+
+                    // Draw centered at (0,0) (since we translated)
+                    let totalHeight = lines.length * lineHeight;
+                    let startY = 0 - (totalHeight / 2) + (lineHeight / 2);
 
                     lines.forEach((line, i) => {
-                        context.fillText(line, node.x!, startY + (i * lineHeight));
+                        // SPHERICAL DISTORTION
+                        const lineYFromCenter = startY + (i * lineHeight);
+                        const relativeY = Math.min(1, Math.abs(lineYFromCenter) / (drawRadius * 0.9)); // Ensure bound <= 1
+
+                        // Sphere Curve: 
+                        // Power 4 curve creates a very flat top (center) and sharp drop to 0 at edges.
+                        // At relativeY = 1.0 (edge), cos is 0, curve is 0.
+                        const rawCurve = Math.cos(relativeY * (Math.PI / 2));
+                        const sphereCurve = Math.pow(rawCurve, 4);
+
+                        // Apply stretch based on curve
+                        // If sphereCurve is 0 (at edges), localStretch is 1.0 (NO stretch).
+                        const scale = node.currentScale || 1.0;
+                        const animationLift = (scale - 1.0); // 0.0 to 0.5
+                        const localStretch = 1.0 + (animationLift * 0.5 * sphereCurve); // Max stretch 1.25x at center (was 0.8 / 1.4x)
+
+                        context.save();
+                        context.translate(0, lineYFromCenter);
+                        context.scale(1, localStretch);
+                        context.fillText(line, 0, 0); // Draw at local 0, which is the line center
+                        context.restore();
                     });
 
-                    context.shadowBlur = 0;
+                    context.restore();
+                }
+            };
+
+            // Draw Non-Hovered First
+            simNodes.forEach(node => {
+                if (node !== hoveredNode) {
+                    drawNode(node, false);
                 }
             });
+
+            // Draw Hovered Last
+            if (hoveredNode) {
+                drawNode(hoveredNode, true);
+            }
 
             context.restore();
         };
@@ -273,50 +379,26 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
 
         // Zoom Listener
         const zoom = d3.zoom()
-            .scaleExtent([0.1, 12]) // Increased max zoom
+            .scaleExtent([0.1, 12])
             .on("zoom", (event) => {
                 transformRef.current = event.transform;
-                // Render handled by rAF loop
             });
 
-        d3.select(canvas).call(zoom as any);
-
-        // Click Handler (Raycasting)
-        const handleClick = (e: MouseEvent) => {
-            const rect = canvas.getBoundingClientRect();
-            const { k, x, y } = transformRef.current;
-            const mx = (e.clientX - rect.left - x) / k;
-            const my = (e.clientY - rect.top - y) / k;
-
-            // Find top node
-            let clicked: SimulationNode | null = null;
-            // Search front-to-back (Smallest (top) to Largest (bottom) if we sorted that way?)
-            // We rendered Big -> Small? No, standard array order.
-            // If they don't overlap, simple search.
-            for (const node of nodesRef.current) {
-                const dx = mx - node.x!;
-                const dy = my - node.y!;
-                if (dx * dx + dy * dy < node.radius * node.radius) {
-                    clicked = node;
-                    break; // Found one
-                }
-            }
-
-            if (clicked) {
-                onNodeClick?.(clicked.data);
-            } else {
-                onBackgroundClick?.();
-            }
-        };
+        // Apply Zoom and Sync State
+        const selection = d3.select(canvas);
+        selection.call(zoom as any);
+        selection.call(zoom.transform as any, transformRef.current);
 
         canvas.addEventListener('click', handleClick);
+        canvas.addEventListener('mousemove', handleMouseMove);
 
         return () => {
             canvas.removeEventListener('click', handleClick);
+            canvas.removeEventListener('mousemove', handleMouseMove);
             simulationRef.current?.on('tick', null);
             cancelAnimationFrame(animationFrameId);
         };
-    }, [dimensions, mode]); // Re-bind on dim/mode change
+    }, [dimensions, mode, containerRadius]);
 
     return (
         <div ref={containerRef} className="w-full h-full relative bg-zinc-950 overflow-hidden">

@@ -45,6 +45,46 @@ export default function GenreMap({ data, contextType = 'library' }: GenreMapProp
         }
     };
 
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'added_at', direction: 'asc' });
+
+    // Handle Sort
+    const handleSort = (key: string) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    const sortedTracks = selectedArtist ? [...(selectedArtist.tracks || [])].sort((a, b) => {
+        const { key, direction } = sortConfig;
+        const multiplier = direction === 'asc' ? 1 : -1;
+
+        switch (key) {
+            case 'name':
+                return a.name.localeCompare(b.name) * multiplier;
+            case 'artist':
+                const artistA = a.artists.map(ar => ar.name).join(', ');
+                const artistB = b.artists.map(ar => ar.name).join(', ');
+                return artistA.localeCompare(artistB) * multiplier;
+            case 'album':
+                return a.album.name.localeCompare(b.album.name) * multiplier;
+            case 'duration_ms':
+                return (a.duration_ms - b.duration_ms) * multiplier;
+            case 'added_at':
+                const dateA = a.added_at ? new Date(a.added_at).getTime() : 0;
+                const dateB = b.added_at ? new Date(b.added_at).getTime() : 0;
+                return (dateA - dateB) * multiplier;
+            default:
+                return 0;
+        }
+    }) : [];
+
+    // Helper for Sort Icon
+    const SortIcon = ({ column }: { column: string }) => {
+        if (sortConfig.key !== column) return <span className="ml-1 text-zinc-700">↕</span>;
+        return <span className="ml-1 text-green-400">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+    };
+
     return (
         <div className="w-full h-full relative">
             {/* Canvas Layer */}
@@ -59,10 +99,11 @@ export default function GenreMap({ data, contextType = 'library' }: GenreMapProp
                 <div className="absolute top-4 left-4 z-10 flex items-center gap-4">
                     <button
                         onClick={handleBack}
-                        className="flex items-center gap-2 bg-black/50 hover:bg-black/80 text-white px-4 py-2 rounded-full backdrop-blur-md border border-white/20 transition-all"
+                        className="group relative flex items-center gap-2 bg-black/50 hover:bg-black/80 text-white px-4 py-2 rounded-full backdrop-blur-md border border-white/20 transition-all overflow-hidden"
                     >
-                        <ArrowLeft className="w-4 h-4" />
-                        <span>Back to Galaxy</span>
+                        <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1s_forwards]" />
+                        <ArrowLeft className="w-4 h-4 relative z-10" />
+                        <span className="relative z-10">Back to Galaxy</span>
                     </button>
                     <h2 className="text-2xl font-bold text-white shadow-black drop-shadow-md">
                         {selectedGenre.name}
@@ -98,13 +139,40 @@ export default function GenreMap({ data, contextType = 'library' }: GenreMapProp
                             <table className="w-full text-left text-sm text-zinc-300">
                                 <thead className="bg-zinc-950/50 sticky top-0 backdrop-blur-sm z-10">
                                     <tr>
-                                        <th className="p-4 font-semibold text-zinc-500">Title</th>
-                                        <th className="p-4 font-semibold text-zinc-500">Album</th>
-                                        <th className="p-4 font-semibold text-zinc-500 text-right">Duration</th>
+                                        <th
+                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors"
+                                            onClick={() => handleSort('name')}
+                                        >
+                                            Title <SortIcon column="name" />
+                                        </th>
+                                        <th
+                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors"
+                                            onClick={() => handleSort('artist')}
+                                        >
+                                            Artist <SortIcon column="artist" />
+                                        </th>
+                                        <th
+                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors"
+                                            onClick={() => handleSort('album')}
+                                        >
+                                            Album <SortIcon column="album" />
+                                        </th>
+                                        <th
+                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors"
+                                            onClick={() => handleSort('added_at')}
+                                        >
+                                            Added <SortIcon column="added_at" />
+                                        </th>
+                                        <th
+                                            className="p-4 font-semibold text-zinc-500 text-right cursor-pointer hover:text-white transition-colors"
+                                            onClick={() => handleSort('duration_ms')}
+                                        >
+                                            Duration <SortIcon column="duration_ms" />
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-zinc-800/50">
-                                    {selectedArtist.tracks?.map((track) => (
+                                    {sortedTracks.map((track) => (
                                         <tr key={track.id}
                                             className="hover:bg-zinc-800/50 transition-colors group cursor-pointer"
                                             onClick={() => window.open(track.uri, '_blank')}
@@ -114,7 +182,13 @@ export default function GenreMap({ data, contextType = 'library' }: GenreMapProp
                                                     {track.name}
                                                 </div>
                                             </td>
+                                            <td className="p-4 text-zinc-400 truncate max-w-[150px]" title={track.artists.map(a => a.name).join(', ')}>
+                                                {track.artists.map(a => a.name).join(', ')}
+                                            </td>
                                             <td className="p-4 text-zinc-400">{track.album.name}</td>
+                                            <td className="p-4 text-zinc-400 text-xs">
+                                                {track.added_at ? new Date(track.added_at).toLocaleDateString() : '-'}
+                                            </td>
                                             <td className="p-4 text-right font-mono text-xs text-zinc-500">
                                                 {formatDuration(track.duration_ms)}
                                             </td>

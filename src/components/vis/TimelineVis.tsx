@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import { SpotifyTrack, SpotifyArtist } from "@/types/spotify";
-import { genreColors } from "@/utils/genreColors";
+import { mapGenreToPillar, interpolatePillarColor, generateVariedColor } from "@/utils/spotifyTransform";
 
 interface TimelineVisProps {
     tracks: SpotifyTrack[];
@@ -16,10 +16,75 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
     const [status, setStatus] = useState<string | null>(null);
     const [tooltip, setTooltip] = useState<{ x: number, y: number, content: any, date: string } | null>(null);
 
-    useEffect(() => {
-        if (!containerRef.current || !svgRef.current) return;
+    // Stable Color Cache
+    const colorMapRef = useRef<Map<string, string>>(new Map());
 
-        console.log("TimelineVis: Starting render...");
+    // Shared Color Generator
+    const getColor = (id: string) => {
+        if (colorMapRef.current.has(id)) return colorMapRef.current.get(id)!;
+
+        // Use 7 Pillars System for consistency with GenreMap
+        const weights = mapGenreToPillar(id);
+        const baseColor = interpolatePillarColor(weights);
+
+        // Apply variance once
+        const variedColor = generateVariedColor(baseColor);
+
+        // Soften the color
+        const c = d3.color(variedColor);
+        let finalColor = variedColor;
+        if (c) {
+            const hsl = d3.hsl(c);
+            hsl.s *= 0.7; // Reduce saturation
+            hsl.l = Math.min(0.8, Math.max(0.4, hsl.l)); // Clamp lightness
+            finalColor = hsl.toString();
+        }
+
+        colorMapRef.current.set(id, finalColor);
+        return finalColor;
+    };
+
+    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        // 1. Initial Measure
+        const rect = containerRef.current.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            setDimensions({ width: rect.width, height: rect.height });
+        }
+
+        // 2. Observe for changes
+        const observer = new ResizeObserver((entries) => {
+            for (let entry of entries) {
+                // Use contentRect or getBoundingClientRect for consistency
+                // contentRect is usually preferred for charts inside containers
+                setDimensions({
+                    width: entry.contentRect.width,
+                    height: entry.contentRect.height
+                });
+            }
+        });
+
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => {
+        // Fallback: If dimensions are still 0, try measuring directly (rare edge case)
+        let w = dimensions.width;
+        let h = dimensions.height;
+
+        if ((w === 0 || h === 0) && containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            w = rect.width;
+            h = rect.height;
+        }
+
+        if (!containerRef.current || !svgRef.current || w === 0 || h === 0) return;
+
+        console.log("TimelineVis: Starting render with", w, h);
 
         if (!tracks.length) {
             setStatus("No tracks available for timeline.");
@@ -110,8 +175,8 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
 
         // 2. Setup D3
         const margin = { top: 20, right: 30, bottom: 30, left: 40 };
-        const width = containerRef.current.clientWidth;
-        const height = containerRef.current.clientHeight;
+        const width = w;
+        const height = h;
 
         const svg = d3.select(svgRef.current);
         svg.selectAll("*").remove();
@@ -145,11 +210,8 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
             .domain([minY, maxY])
             .range([height - margin.bottom - margin.top, 0]);
 
-        const color = (id: string) => {
-            const key = id.toLowerCase();
-            if (genreColors[key]) return genreColors[key];
-            return d3.scaleOrdinal(d3.schemeSpectral[8] || d3.schemeTableau10)(id);
-        };
+        // Use shared getColor function
+        const color = getColor;
 
         const area = d3.area()
             .curve(d3.curveBasis)
@@ -167,12 +229,23 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
             .join("path")
             .attr("fill", (d: any) => color(d.key) as string)
             .attr("d", area as any)
-            .attr("opacity", 0.9);
+            .attr("opacity", 0.85); // Slightly more transparent
 
         // Axes
         const xAxis = chartArea.append("g")
             .attr("transform", `translate(0,${height - margin.bottom - margin.top})`)
             .call(d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0));
+
+        // Y-Axis Label
+        chartArea.append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("y", 0 - margin.left + 12)
+            .attr("x", 0 - (height - margin.top - margin.bottom) / 2)
+            .attr("dy", "1em")
+            .style("text-anchor", "middle")
+            .style("fill", "#71717a") // Zinc-500
+            .style("font-size", "12px")
+            .text("Volume of Tracks Added");
 
         // Legend
         const legend = svg.append("g")
@@ -265,7 +338,7 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
                 setTooltip(null);
             });
 
-    }, [tracks, artistMap]);
+    }, [tracks, artistMap, dimensions]);
 
     return (
         <div ref={containerRef} className="w-full h-full animate-in fade-in duration-500 relative bg-zinc-950/50">
@@ -290,8 +363,14 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
                             .sort((a: any, b: any) => b[1] - a[1]) // sorting by count
                             .slice(0, 5) // Top 5
                             .map(([genre, count]: [string, any]) => (
-                                <div key={genre} className="flex justify-between items-center">
-                                    <span className="capitalize text-zinc-300 truncate pr-2">{genre}</span>
+                                <div key={genre} className="flex justify-between items-center gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <div
+                                            className="w-3 h-3 rounded-full flex-shrink-0"
+                                            style={{ backgroundColor: getColor(genre) }}
+                                        />
+                                        <span className="capitalize text-zinc-300 truncate">{genre}</span>
+                                    </div>
                                     <span className="font-mono text-white">{count}</span>
                                 </div>
                             ))

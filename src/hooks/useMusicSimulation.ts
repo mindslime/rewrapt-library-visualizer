@@ -17,6 +17,7 @@ export interface SimulationNode extends d3.SimulationNodeDatum {
 
     // Animation state
     currentRadius: number;
+    currentScale?: number;
 }
 
 interface UseMusicSimulationProps {
@@ -41,7 +42,11 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
     // Using sqrt to grow space faster initially
     const capacity = 200;
     const ratio = Math.min(1, Math.sqrt(data.length / capacity));
-    const containerRadius = minR + (maxR - minR) * ratio;
+
+    // CLUSTER MODE: Always use Max Radius to fill the screen
+    const containerRadius = mode === 'CLUSTER'
+        ? maxR
+        : minR + (maxR - minR) * ratio;
 
     // Attraction Radius scales with Container
     const attractionRadius = containerRadius * 0.75; // 75% of container
@@ -54,11 +59,10 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
         if (!width || !height || width <= 0 || height <= 0 || data.length === 0) return;
 
         // Dynamic Bubble Scaling
-        // Reduce the variation. Small lists shouldn't have giant bubbles.
-        // Base scale ~ 40.
-        // As nodes increase, we shrink slightly to fit, but rely on container growth more.
-        // Updated: Middle ground. Start 0.75, div 900.
-        const dynamicScale = Math.max(0.3, 0.75 - (data.length / 900));
+        // Inverse relationship with node count to optimize screen real estate.
+        // Few nodes (e.g. 5) -> Larger bubbles (~1.2 scale)
+        // Many nodes (e.g. 100) -> Smaller bubbles (~0.5 scale)
+        const dynamicScale = Math.min(2.5, Math.max(0.4, 6.0 / Math.sqrt(data.length + 20)));
 
         // Window-Relative Unit
         // If window is 1000px, unit is 1. If 500px, unit is 0.5.
@@ -72,10 +76,17 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             // Base size: sqrt(count) for area.
             // Middle ground multiplier (was 3.5, now 4.5).
             // e.g. Count 100 -> 10. * 4.5 = 45 units.
-            let radius = (Math.sqrt(d.count) * 4.5 * baseUnit + 2 * baseUnit) * dynamicScale;
 
-            // Cap it relative to container (Max 28% of ring radius)
-            radius = Math.min(radius, containerRadius * 0.28);
+            // CLUSTER MODE BOOST:
+            // If in cluster mode, we want bigger bubbles to fill the view.
+            const modeMultiplier = mode === 'CLUSTER' ? 2.5 : 1.0;
+
+            let radius = (Math.sqrt(d.count) * 4.5 * baseUnit + 2 * baseUnit) * dynamicScale * modeMultiplier;
+
+            // Cap it relative to container 
+            // Relax cap for Cluster mode (40% vs 28%)
+            const capRatio = mode === 'CLUSTER' ? 0.40 : 0.28;
+            radius = Math.min(radius, containerRadius * capRatio);
 
             // Extracts pre-calc position from transform
             const p = (d as any).pillarPos || { x: 0, y: 0 };
@@ -118,7 +129,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
                     return center.x + (d.targetX * attractionRadius);
                 }
                 return center.x;
-            }).strength(mode === 'GLOBAL' ? 0.3 : 0.05))
+            }).strength(mode === 'GLOBAL' ? 0.3 : 0.15))
 
             .force("pillar_y", d3.forceY((d: any) => {
                 if (mode === 'GLOBAL') {
@@ -126,7 +137,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
                     return center.y + (d.targetY * attractionRadius);
                 }
                 return center.y;
-            }).strength(mode === 'GLOBAL' ? 0.3 : 0.05))
+            }).strength(mode === 'GLOBAL' ? 0.3 : 0.15))
 
             .force("charge", d3.forceManyBody().strength(-10))
             .force("enclosure", () => {

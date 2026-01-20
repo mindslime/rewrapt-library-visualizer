@@ -3,6 +3,7 @@
 import { useSession } from "next-auth/react";
 import { useEffect, useState, useRef } from "react";
 import { ChevronLeft, Music, Users, Library, Activity, Grid, List, LayoutGrid } from "lucide-react";
+import { motion } from "framer-motion";
 import GenreMap from "./vis/GenreMap";
 import TimelineVis from "./vis/TimelineVis";
 import PlaylistSkeleton from "./PlaylistSkeleton";
@@ -13,10 +14,11 @@ import { transformTracksToNodes } from "@/utils/spotifyTransform";
 
 interface DashboardProps {
     onDetailViewChange?: (isOpen: boolean) => void;
+    onViewModeChange?: (mode: 'CLUSTER' | 'TIMELINE') => void;
     onProfileImageLoaded?: (url: string | null) => void;
 }
 
-export default function Dashboard({ onDetailViewChange, onProfileImageLoaded }: DashboardProps) {
+export default function Dashboard({ onDetailViewChange, onViewModeChange, onProfileImageLoaded }: DashboardProps) {
     const { data: session } = useSession();
     const [profile, setProfile] = useState<any>(null);
     const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
@@ -32,6 +34,11 @@ export default function Dashboard({ onDetailViewChange, onProfileImageLoaded }: 
     const [isLibraryView, setIsLibraryView] = useState(false);
     const [viewMode, setViewMode] = useState<'CLUSTER' | 'TIMELINE'>('CLUSTER');
     const [playlistViewMode, setPlaylistViewMode] = useState<'GRID' | 'LIST'>('GRID');
+
+    // Sync view mode
+    useEffect(() => {
+        onViewModeChange?.(viewMode);
+    }, [viewMode, onViewModeChange]);
 
     // Data State
     const [genreData, setGenreData] = useState<GenreNode[]>([]);
@@ -113,9 +120,6 @@ export default function Dashboard({ onDetailViewChange, onProfileImageLoaded }: 
             // SAVE DATA FOR TIMELINE
             setAllTracks(tracks);
             setArtistDetails(artistMap);
-
-            // 4. Convert to Nodes (Using new "Spotify ID" transform)
-
 
             // 4. Convert to Nodes (Using new "Spotify ID" transform)
             const nodes = transformTracksToNodes(tracks, artistMap);
@@ -348,37 +352,50 @@ export default function Dashboard({ onDetailViewChange, onProfileImageLoaded }: 
 
     // --- RENDER: Dashboard Home ---
     return (
-        <div className="w-full max-w-6xl flex flex-col gap-8 mt-8 pb-20">
+        <div className="w-full max-w-6xl flex flex-col gap-6 sm:gap-8 mt-0 pb-20">
             {/* Header Stats */}
-            <div className="bg-[#121212] p-8 rounded-xl">
-                <div className="flex items-center gap-8">
+            <motion.div
+                layout
+                transition={{ duration: 0.6, ease: "easeInOut" }}
+                className="bg-[#121212] p-8 rounded-xl"
+            >
+                <motion.div
+                    layout
+                    className="flex flex-col md:flex-row items-center gap-8"
+                >
                     {/* Profile Image - Left */}
                     {profile?.images?.[0]?.url && (
-                        <img
+                        <motion.img
+                            layout
                             src={profile.images[0].url}
-                            className="w-32 h-32 rounded-full border-4 border-zinc-700 object-cover flex-shrink-0"
+                            className="w-32 h-32 rounded-full border-4 border-zinc-700 object-cover flex-shrink-0 relative z-10"
                             alt="Profile"
                         />
                     )}
 
                     {/* Text - Center */}
-                    <div className="flex-1">
+                    <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.5 }}
+                        className="flex-1 text-center md:text-left relative z-0"
+                    >
                         <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500 mb-2">
                             {profile?.display_name ? `Hi, ${profile.display_name}` : "Welcome"}
                         </h2>
                         <p className="text-zinc-400">Visualize your musical landscape.</p>
-                    </div>
+                    </motion.div>
 
-                    <div className="flex flex-col gap-3 flex-shrink-0">
+                    <motion.div layout className="flex flex-col gap-3 flex-shrink-0 w-full md:w-auto">
                         <button
                             onClick={handleLibraryClick}
-                            className="relative group overflow-hidden p-[1px] rounded-xl transition-all hover:scale-105 shadow-lg hover:shadow-[0_0_20px_2px_rgba(16,185,129,0.5)]"
+                            className="relative group overflow-hidden p-[1px] rounded-xl transition-all hover:scale-105 shadow-lg hover:shadow-[0_0_20px_2px_rgba(16,185,129,0.5)] w-full md:w-auto"
                         >
                             {/* Animated Conic Gradient Background */}
                             <div className="absolute inset-[-1000%] bg-[conic-gradient(from_90deg_at_50%_50%,#000000_0%,#10b981_40%,#a7f3d0_50%,#10b981_60%,#000000_100%)] animate-[spin_4s_linear_infinite] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
                             {/* Inner Content */}
-                            <div className="relative flex items-center gap-3 px-6 py-4 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl h-full w-full backface-visibility-hidden">
+                            <div className="relative flex items-center justify-center md:justify-start gap-3 px-6 py-4 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl h-full w-full backface-visibility-hidden">
                                 <Library className="w-6 h-6" />
                                 <span className="relative z-10">Analyze Liked Music</span>
                             </div>
@@ -386,11 +403,11 @@ export default function Dashboard({ onDetailViewChange, onProfileImageLoaded }: 
 
                         <div className="flex items-center justify-center gap-2 px-6 py-3 bg-[#1f1f1f] rounded-xl text-zinc-300">
                             <div className="text-xl font-bold text-white">{playlists.length}</div>
-                            <div className="text-sm">Playlists</div>
+                            <div className="text-sm">{playlists.length === 1 ? "Playlist" : "Playlists"}</div>
                         </div>
-                    </div>
-                </div>
-            </div>
+                    </motion.div>
+                </motion.div>
+            </motion.div>
 
             {/* Playlist Section */}
             <div className="bg-[#121212] p-6 rounded-xl">

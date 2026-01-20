@@ -181,6 +181,28 @@ export function interpolatePillarColor(weights: PillarWeights): string {
 }
 
 /**
+ * Generates a color variation close to the base color
+ */
+/**
+ * Generates a color variation close to the base color
+ */
+export function generateVariedColor(baseColor: string): string {
+    const result = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(baseColor);
+    if (!result) return baseColor;
+
+    const r = parseInt(result[1]);
+    const g = parseInt(result[2]);
+    const b = parseInt(result[3]);
+
+    // Variation range +/- 40
+    const variation = () => Math.floor(Math.random() * 80) - 40;
+
+    const clamp = (v: number) => Math.min(255, Math.max(0, v));
+
+    return `rgb(${clamp(r + variation())}, ${clamp(g + variation())}, ${clamp(b + variation())})`;
+}
+
+/**
  * Main Transformation Function
  */
 export function transformSpotifyData(songs: SpotifyTrack[]): GenreNode[] {
@@ -264,19 +286,19 @@ export function transformTracksToNodes(
         });
 
         const children: GenreNode[] = Array.from(artistGroups.entries()).map(([aname, adata]) => ({
-            id: `${genre}-${aname}`, // Unique ID
+            id: `${genre}-${aname}`,
             name: aname,
             count: adata.count,
             artists: [aname],
             artistCount: 1,
-            albumCount: 0, // todo
+            albumCount: 0,
             tracks: adata.tracks,
             topTracks: adata.tracks.slice(0, 5),
-            // Artist nodes inherit the Genre's position roughly, maybe slightly randomized?
-            // Or we re-calculate if we had finer grained data. 
-            // For now, they inherit the Parent's color/position logic but will be simulated separately in drill down.
-            genres: [genre]
-        }));
+            genres: [genre],
+            // Inherit Color with Variance
+            color: generateVariedColor(color),
+            pillarPos: { x: nx, y: ny } // Inherit position
+        } as GenreNode & { color: string, pillarPos: any }));
 
 
         return {
