@@ -113,76 +113,78 @@ export default function Home() {
   }, [session]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-black font-[family-name:var(--font-geist-sans)]">
+    <div className="flex flex-col min-h-screen bg-black font-[family-name:var(--font-geist-sans)] overflow-x-hidden">
 
-      {/* Responsive Header / Navbar */}
-      <header
-        ref={headerRef}
-        className={`w-full flex items-center justify-between p-4 px-6 fixed transition-colors duration-500 bg-transparent border-transparent sm:pointer-events-none z-50 ${isDetailView ? 'bottom-0 pointer-events-none' : 'top-0 left-0 right-0'}`}
-      >
-        {/* Mobile Title (Always visible on mobile) */}
-        {/* Mobile Title */}
-        <div className={`sm:hidden font-bold text-xl tracking-tight pointer-events-auto ${isDetailView ? 'fixed bottom-4 right-4 z-[102] opacity-30 !pointer-events-none' : ''}`}>
-          {session ? (
-            <AnimatedTitle
-              text="ReWrapt"
-              variant="navbar"
-              className="text-xl text-white"
-            />
-          ) : (
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
-              Spotify ReWrapt
-            </span>
-          )}
-        </div>
+      {/* Responsive Header / Navbar - Only show when logged in */}
+      {session && (
+        <header
+          ref={headerRef}
+          className={`w-full flex items-center justify-between p-4 px-6 fixed transition-colors duration-500 bg-transparent border-transparent sm:pointer-events-none z-50 ${isDetailView ? 'bottom-0 pointer-events-none' : 'top-0 left-0 right-0'}`}
+        >
+          {/* Mobile Title (Always visible on mobile) */}
+          {/* Mobile Title */}
+          <div className={`sm:hidden font-bold text-xl tracking-tight pointer-events-auto ${isDetailView ? 'fixed bottom-4 right-4 z-[102] opacity-30 !pointer-events-none' : ''}`}>
+            {session ? (
+              <AnimatedTitle
+                text="ReWrapt"
+                variant="navbar"
+                className="text-xl text-white"
+              />
+            ) : (
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
+                Spotify ReWrapt
+              </span>
+            )}
+          </div>
 
-        {/* Desktop Title (Visible on Scroll) - Positioned Left or Watermarked */}
-        <div
-          ref={headerTitleRef}
-          className={`hidden sm:block font-bold text-2xl tracking-tight pointer-events-auto transition-all duration-500 ease-in-out will-change-transform will-change-opacity ${isDetailView
+          {/* Desktop Title (Visible on Scroll) - Positioned Left or Watermarked */}
+          <div
+            ref={headerTitleRef}
+            className={`hidden sm:block font-bold text-2xl tracking-tight pointer-events-auto transition-all duration-500 ease-in-out will-change-transform will-change-opacity ${isDetailView
               ? (currentViewMode === 'TIMELINE'
                 ? 'fixed top-24 right-6 z-[102] !opacity-50 !pointer-events-none !transform-none'
                 : 'fixed bottom-6 right-6 z-[102] !opacity-30 !pointer-events-none !transform-none')
               : ''
-            }`}
-          style={{
-            // If Watermark (isDetailView), these inline styles are overridden by !important classes above or we strictly control them here
-            // But we can just use the class priority if we are careful.
-            // Actually, inline styles win over classes. We need to condition the inline styles.
-            opacity: isDetailView ? undefined : (session ? 1 : 0),
-            transform: isDetailView ? undefined : (session ? 'translateY(0)' : 'translateY(20px)'),
-            pointerEvents: isDetailView ? undefined : (session ? 'auto' : 'none')
-          }}
-        >
-          {session ? (
-            <AnimatedTitle
-              text="ReWrapt"
-              variant="navbar"
-              className="text-2xl text-white"
-            />
-          ) : (
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
-              Spotify ReWrapt
-            </span>
-          )}
-        </div>
-
-        {/* Sign Out Button (Always Top Right) - Enable pointer events on desktop too since header is pointer-events-none */}
-        {/* Sign Out Button (Always Top Right) - Enable pointer events on desktop too since header is pointer-events-none */}
-        <div className={`ml-auto pointer-events-auto transition-opacity duration-300 relative w-10 h-10 flex items-center justify-center ${isDetailView ? 'opacity-0 pointer-events-none' : ''}`}>
-
-          {/* 1. Simple Button (Initial) */}
-          <div ref={btnSimpleRef} className="absolute inset-0 flex items-center justify-center">
-            <LoginButton action="logout" variant="simple" />
+              }`}
+            style={{
+              // If Watermark (isDetailView), these inline styles are overridden by !important classes above or we strictly control them here
+              // But we can just use the class priority if we are careful.
+              // Actually, inline styles win over classes. We need to condition the inline styles.
+              opacity: isDetailView ? undefined : (session ? 1 : 0),
+              transform: isDetailView ? undefined : (session ? 'translateY(0)' : 'translateY(20px)'),
+              pointerEvents: isDetailView ? undefined : (session ? 'auto' : 'none')
+            }}
+          >
+            {session ? (
+              <AnimatedTitle
+                text="ReWrapt"
+                variant="navbar"
+                className="text-2xl text-white"
+              />
+            ) : (
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
+                Spotify ReWrapt
+              </span>
+            )}
           </div>
 
-          {/* 2. Flip Button (Scrolled) */}
-          <div ref={btnFlipRef} className="absolute inset-0 flex items-center justify-center" style={{ opacity: 0, pointerEvents: 'none' }}>
-            <LoginButton action="logout" variant="flip" profileImage={profileImage} />
-          </div>
+          {/* Sign Out Button (Always Top Right) - Enable pointer events on desktop too since header is pointer-events-none */}
+          {/* Sign Out Button (Always Top Right) - Enable pointer events on desktop too since header is pointer-events-none */}
+          <div className={`ml-auto pointer-events-auto transition-opacity duration-300 relative w-10 h-10 flex items-center justify-center ${isDetailView ? 'opacity-0 pointer-events-none' : ''}`}>
 
-        </div>
-      </header>
+            {/* 1. Simple Button (Initial) */}
+            <div ref={btnSimpleRef} className="absolute inset-0 flex items-center justify-center">
+              <LoginButton action="logout" variant="simple" />
+            </div>
+
+            {/* 2. Flip Button (Scrolled) */}
+            <div ref={btnFlipRef} className="absolute inset-0 flex items-center justify-center" style={{ opacity: 0, pointerEvents: 'none' }}>
+              <LoginButton action="logout" variant="flip" profileImage={profileImage} />
+            </div>
+
+          </div>
+        </header>
+      )}
 
       <main className={`flex-1 flex flex-col items-center p-4 gap-6 sm:p-20 text-center mt-12 sm:mt-0 transition-all duration-500 ease-in-out ${!session ? 'justify-center' : 'justify-start'}`}>
 
