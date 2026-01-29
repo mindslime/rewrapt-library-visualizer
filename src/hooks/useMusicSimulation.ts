@@ -71,7 +71,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
     // We interpolate linearly between 350px and 1200px.
     const mobileDim = 350;
     const desktopDim = 1200;
-    const mobileFactor = 2.5;
+    const mobileFactor = 1.8;
     const desktopFactor = 1.8;
 
     let spacingFactor = mobileFactor;
@@ -91,12 +91,21 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
     const idealRadius = idealCircumference / (2 * Math.PI);
 
     // 4. Convert to Factor (0.0 to 1.0 of minDim)
-    let sizeFactor = idealRadius / minDim;
+    let rawSizeFactor = idealRadius / minDim;
 
     // 5. Build Safety Clamps
-    // Never smaller than 25% (too crushed)
+    // Never smaller than 35% (70% width) - Ensures visibility
     // Never larger than 60% (off screen)
-    sizeFactor = Math.max(0.25, Math.min(0.60, sizeFactor));
+    const minSizeClamp = 0.35;
+
+    // AUTO-ZOOM: If the natural size is too small, we scale the bubbles UP to fit the min container.
+    // This prevents "tiny dots in a tiny ring".
+    let autoZoom = 1.0;
+    if (rawSizeFactor < minSizeClamp && rawSizeFactor > 0.001) {
+        autoZoom = minSizeClamp / rawSizeFactor;
+    }
+
+    const sizeFactor = Math.max(minSizeClamp, Math.min(0.60, rawSizeFactor));
 
     // Debugging visual tuning
     useEffect(() => {
@@ -158,6 +167,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             const modeMultiplier = mode === 'CLUSTER' ? 2.5 : 1.0;
 
             let radius = (Math.sqrt(d.count) * 4.5 * baseUnit + 2 * baseUnit) * dynamicScale * modeMultiplier;
+            radius *= autoZoom; // Apply auto-zoom
 
             // Cap it relative to container 
             // Relax cap for Cluster mode (50% vs 40%)
@@ -198,7 +208,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             .alphaDecay(0.04)
             .velocityDecay(0.6)
             .force("collide", d3.forceCollide()
-                .radius((d: any) => d.radius + 4) // Added more padding
+                .radius((d: any) => d.radius + (4 * baseUnit)) // Responsive padding (was +4)
                 .strength(1.0) // Maximum stiffness
                 .iterations(6) // More iterations to resolve overlap
             )
@@ -218,7 +228,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
                 return center.y;
             }).strength(mode === 'GLOBAL' ? 0.1 : 0.15))
 
-            .force("charge", d3.forceManyBody().strength(-10))
+            .force("charge", d3.forceManyBody().strength(-10 * baseUnit))
             .force("enclosure", () => {
                 const limit = containerRadius;
 
