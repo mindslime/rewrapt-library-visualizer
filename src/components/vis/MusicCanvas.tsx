@@ -278,16 +278,42 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
                 // Labels
                 // Render if large enough OR if trying to lift
                 const visualSize = node.radius * k; // Check unscaled size for layout stability
-                if (visualSize > 15 || node.currentScale > 1.1) {
+
+                // Lower threshold to 6px for smoother fade-in
+                if (visualSize > 6 || node.currentScale > 1.1) {
 
                     // --- STABLE LAYOUT CALCULATION ---
                     const stableRadius = node.radius;
-                    const baseFontSize = Math.max(4, Math.min(stableRadius * 0.4, 100));
-                    const stableMaxWidth = stableRadius * 1.8;
+                    let baseFontSize = Math.max(1, Math.min(stableRadius * 0.4, 100)); // Start with max desired size
 
-                    context.font = `bold ${baseFontSize}px sans-serif`;
-
+                    // Check width constraint for longest word
                     const words = node.name.split(' ');
+                    let longestWord = "";
+                    words.forEach(w => {
+                        if (w.length > longestWord.length) longestWord = w;
+                    });
+
+                    // Dynamic weight based on size
+                    const getFont = (size: number) => {
+                        const weight = size < 10 ? 'normal' : 'bold';
+                        return `${weight} ${size}px sans-serif`;
+                    };
+
+                    if (longestWord) {
+                        context.font = getFont(baseFontSize);
+                        const widthAtMax = context.measureText(longestWord).width;
+                        const targetMaxWidth = stableRadius * 1.5; // Leave some padding (1.5x radius)
+
+                        if (widthAtMax > targetMaxWidth) {
+                            const ratio = targetMaxWidth / widthAtMax;
+                            baseFontSize = Math.max(1, baseFontSize * ratio);
+                        }
+                    }
+
+                    const stableMaxWidth = stableRadius * 1.8; // Wrapping limit
+
+                    context.font = getFont(baseFontSize);
+
                     const lines: string[] = [];
                     let currentLine = words[0];
 
@@ -307,9 +333,22 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
                     context.save();
                     context.translate(node.x!, node.y!); // Move to center
 
+                    // Calc Opacity based on size
+                    // Range: 6px (invisible) -> 20px (full visibility)
+                    let textAlpha = 1;
+
+                    if (!isHovered && visualSize < 20) {
+                        const t = Math.max(0, (visualSize - 6) / (20 - 6)); // 0 to 1
+                        textAlpha = t;
+                    }
+
+                    context.globalAlpha = textAlpha;
+
                     // Scale the font size
                     const drawFontSize = baseFontSize * node.currentScale;
-                    context.font = `bold ${drawFontSize}px sans-serif`;
+                    // Dynamic weight based on DRAGGED/SCALED size
+                    const drawWeight = drawFontSize < 12 ? 'normal' : 'bold';
+                    context.font = `${drawWeight} ${drawFontSize}px sans-serif`;
                     context.textAlign = "center";
                     context.textBaseline = "middle";
                     context.fillStyle = "white";
@@ -410,9 +449,9 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
             />
 
             {/* Overlay UI (optional) */}
-            <div className="absolute top-4 right-4 pointer-events-none">
+            <div className="absolute top-4 right-4 pointer-events-none md:hidden">
                 <div className="text-xs text-zinc-500 font-mono">
-                    {mode === 'GLOBAL' ? 'Global View' : 'Cluster View'}
+                    {mode === 'GLOBAL' ? 'Cluster View' : 'Cluster View'}
                 </div>
             </div>
         </div>

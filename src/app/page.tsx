@@ -122,8 +122,12 @@ export default function Home() {
           className={`w-full flex items-center justify-between p-4 px-6 fixed transition-colors duration-500 bg-transparent border-transparent sm:pointer-events-none z-50 ${isDetailView ? 'bottom-0 pointer-events-none' : 'top-0 left-0 right-0'}`}
         >
           {/* Mobile Title (Always visible on mobile) */}
-          {/* Mobile Title */}
-          <div className={`sm:hidden font-bold text-xl tracking-tight pointer-events-auto ${isDetailView ? 'fixed bottom-4 right-4 z-[102] opacity-30 !pointer-events-none' : ''}`}>
+          <div className={`sm:hidden font-bold text-xl tracking-tight pointer-events-auto ${isDetailView
+              ? (currentViewMode === 'TIMELINE'
+                ? 'fixed top-[82px] right-4 z-[102] !opacity-50 !pointer-events-none'
+                : 'fixed bottom-4 right-4 z-[102] opacity-30 !pointer-events-none')
+              : ''
+            }`}>
             {session ? (
               <AnimatedTitle
                 text="ReWrapt"

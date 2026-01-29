@@ -192,8 +192,21 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
             .attr("transform", `translate(${margin.left},${margin.top})`);
 
         // Scales
+        let [minDate, maxDate] = d3.extent(data, (d: any) => d.month) as [Date, Date];
+
+        // Enforce minimum 3-month range
+        if (minDate && maxDate) {
+            const threeMonthsMs = 90 * 24 * 60 * 60 * 1000; // ~90 days
+            const currentRange = maxDate.getTime() - minDate.getTime();
+
+            if (currentRange < threeMonthsMs) {
+                // Extend the max date to hit the 3-month mark
+                maxDate = new Date(minDate.getTime() + threeMonthsMs);
+            }
+        }
+
         const x = d3.scaleTime()
-            .domain(d3.extent(data, (d: any) => d.month) as [Date, Date])
+            .domain([minDate, maxDate])
             .range([0, width - margin.left - margin.right]);
 
         const stack = d3.stack()
@@ -343,6 +356,12 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
     return (
         <div ref={containerRef} className="w-full h-full animate-in fade-in duration-500 relative bg-zinc-950/50">
             <svg ref={svgRef} className="w-full h-full" />
+
+            <div className="absolute top-4 right-4 pointer-events-none md:hidden">
+                <div className="text-xs text-zinc-500 font-mono">
+                    Timeline View
+                </div>
+            </div>
 
             {status && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 bg-zinc-950/80 p-6 text-center pointer-events-none">

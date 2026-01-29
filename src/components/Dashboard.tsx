@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useState, useRef } from "react";
-import { ChevronLeft, Music, Users, Library, Activity, Grid, List, LayoutGrid } from "lucide-react";
+import { ChevronLeft, Music, Users, Library, Activity, Circle, List, LayoutGrid } from "lucide-react";
 import { motion } from "framer-motion";
 import GenreMap from "./vis/GenreMap";
 import TimelineVis from "./vis/TimelineVis";
@@ -184,7 +184,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
         setIsLibraryView(true);
         setLoading(true);
-        setViewTitle("Your Whole Library");
+        setViewTitle("Your Library");
         setProgress(null);
 
         try {
@@ -195,7 +195,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
             if (cachedTracks.length > 0) {
                 if (!signal.aborted) {
                     setLoading(false);
-                    processTracks(cachedTracks, "Your Whole Library", signal);
+                    processTracks(cachedTracks, "Your Library", signal);
                 }
             } else {
                 if (!signal.aborted) {
@@ -226,7 +226,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                 const allTracks = [...newTracks, ...cachedTracks];
                 const uniqueTracks = Array.from(new Map(allTracks.map(t => [t.id, t])).values());
 
-                await processTracks(uniqueTracks, "Your Whole Library", signal);
+                await processTracks(uniqueTracks, "Your Library", signal);
             } else {
                 console.log("Library up to date.");
             }
@@ -278,44 +278,53 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
     if (viewTitle) {
         return (
             <div className="fixed inset-0 z-[100] bg-black flex flex-col">
-                <header className="flex items-center justify-between px-6 py-4 bg-[#121212] border-b border-[#282828]">
-                    <div className="flex items-center gap-4">
+                <header className="flex items-center justify-between px-4 py-2 md:px-6 md:py-4 bg-gradient-to-b from-[#121212]/95 to-[#121212]/0 backdrop-blur-md absolute top-0 left-0 right-0 z-[120]">
+                    <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
                         <button
                             onClick={() => {
                                 cancelOperations();
                                 setViewTitle(null);
                                 setIsLibraryView(false);
                             }}
-                            className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                            className="p-1.5 md:p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0"
                         >
-                            <ChevronLeft className="w-6 h-6" />
+                            <ChevronLeft className="w-5 h-5 md:w-6 md:h-6" />
                         </button>
-                        <div>
-                            <h2 className="text-xl font-bold">{viewTitle}</h2>
-                            <p className="text-zinc-400 text-xs">
-                                {isLibraryView ? "Global Library Analysis" : "Playlist Analysis"}
+                        <div className="min-w-0">
+                            <h2 className="text-sm md:text-xl font-bold truncate">{viewTitle}</h2>
+                            <p className="text-zinc-400 text-[10px] md:text-xs truncate hidden md:block">
+                                {!isLibraryView && "Playlist Analysis"}
                             </p>
                         </div>
                     </div>
 
                     {/* View Switcher */}
-                    <div className="flex bg-[#181818] p-1 rounded-lg relative z-[101]">
+                    <div className="flex bg-[#181818]/80 backdrop-blur-md p-1 rounded-lg relative z-[101]">
                         <button
                             onClick={() => setViewMode('CLUSTER')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all cursor-pointer ${viewMode === 'CLUSTER' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"}`}
+                            className={`flex items-center justify-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all cursor-pointer ${viewMode === 'CLUSTER' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                                }`}
                         >
-                            <Grid className="w-4 h-4" />
-                            Clusters View
+                            <Circle className="w-4 h-4" />
+                            <span className="hidden md:inline">Clusters</span>
                         </button>
+
                         <button
                             onClick={() => setViewMode('TIMELINE')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all cursor-pointer ${viewMode === 'TIMELINE' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"}`}
+                            className={`flex items-center justify-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all cursor-pointer ${viewMode === 'TIMELINE' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                                }`}
                         >
                             <Activity className="w-4 h-4" />
-                            Timeline View
+                            {/* Desktop: Always Show. Mobile: Hidden (Icon only) */}
+                            <span className="hidden md:inline">
+                                Timeline
+                            </span>
                         </button>
                     </div>
                 </header>
+
+                {/* Spacer for fixed header */}
+                <div className="h-12 md:h-20 flex-shrink-0 pointer-events-none" />
 
                 <div className="flex-1 overflow-hidden relative bg-zinc-950">
                     {loading ? (
