@@ -33,23 +33,93 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
 
     // Dynamic Container Radius Calculation
     // Small playlist = Smaller ring to keep density high.
-    // Large library = Max ring to fit everything.
+    // Large library = Larger ring to reduce crowding.
     const minDim = Math.min(width, height);
-    const maxR = minDim * 0.45;
-    const minR = minDim * 0.25;
 
-    // Scale from 0 to 200 items (after 200, we stay at max size)
-    // Using sqrt to grow space faster initially
-    const capacity = 200;
-    const ratio = Math.min(1, Math.sqrt(data.length / capacity));
+    // DENSITY-BASED SIZING ALGORITHM (Iteration 6)
+    // Goal: Size the ring so that bubbles fill it nicely, regardless of count.
+
+    // 1. Calculate the "Visual Mass" of the data
+    // We sum the theoretically required diameter for all bubbles.
+    // Base unit matches the bubble size calculation below
+    const baseUnit = minDim / 1000;
+
+    // Calculate a theoretical dynamic scale for sizing estimation
+    const count = data.length;
+    let scalingFactor = 1.0;
+    if (count < 40) {
+        scalingFactor = 1.0 + (3.5 * (1 - (count / 40)));
+    } else {
+        scalingFactor = Math.max(0.4, 6.0 / Math.sqrt(count + 6));
+    }
+
+    // Sum of Diameters: The linear space needed if laid out in a line
+    // Bubble Radius ~= (sqrt(count) * 4.5 * baseUnit) * scale
+    // We ignore the constant factor (+ 2 * baseUnit) for the broad estimation
+    const totalBubbleDiameter = data.reduce((acc, d) => {
+        const radius = (Math.sqrt(d.count) * 4.5 * baseUnit) * scalingFactor;
+        return acc + (radius * 2);
+    }, 0);
+
+    // 2. Determine Optimal Circumference
+    // We want the bubbles to occupy roughly 40-50% of the ring's perimeter for a "breathing" look.
+    // If we pack them 100%, they touch. 
+
+    // RESPONSIVE SPACING FACTOR (Iteration 7)
+    // Mobile (Small Screen) = 2.5 (Loose, user likes this)
+    // Desktop (Large Screen) = 1.8 (Tight, to prevent huge gaps)
+    // We interpolate linearly between 350px and 1200px.
+    const mobileDim = 350;
+    const desktopDim = 1200;
+    const mobileFactor = 2.5;
+    const desktopFactor = 1.8;
+
+    let spacingFactor = mobileFactor;
+
+    if (minDim >= desktopDim) {
+        spacingFactor = desktopFactor;
+    } else if (minDim > mobileDim) {
+        // Linear Interpolation: 
+        // progress 0 (350px) -> 1 (1200px)
+        const progress = (minDim - mobileDim) / (desktopDim - mobileDim);
+        spacingFactor = mobileFactor - (progress * (mobileFactor - desktopFactor));
+    }
+
+    const idealCircumference = totalBubbleDiameter * spacingFactor;
+
+    // 3. Derive Ideal Radius (C = 2 * PI * r  =>  r = C / 2PI)
+    const idealRadius = idealCircumference / (2 * Math.PI);
+
+    // 4. Convert to Factor (0.0 to 1.0 of minDim)
+    let sizeFactor = idealRadius / minDim;
+
+    // 5. Build Safety Clamps
+    // Never smaller than 25% (too crushed)
+    // Never larger than 60% (off screen)
+    sizeFactor = Math.max(0.25, Math.min(0.60, sizeFactor));
+
+    // Debugging visual tuning
+    useEffect(() => {
+        console.log('[MusicSimulation] Density Tuning:', {
+            count,
+            scalingFactor,
+            totalBubbleDiameter,
+            idealCircumference,
+            idealRadius,
+            spacingFactor,
+            calculatedSizeFactor: sizeFactor,
+            clampedSizeFactor: Math.max(0.25, Math.min(0.60, sizeFactor)),
+            minDim
+        });
+    }, [count, scalingFactor, totalBubbleDiameter, idealCircumference, idealRadius, spacingFactor, sizeFactor, minDim]);
 
     // CLUSTER MODE: Always use Max Radius to fill the screen
     const containerRadius = mode === 'CLUSTER'
-        ? maxR
-        : minR + (maxR - minR) * ratio;
+        ? minDim * 0.60
+        : minDim * sizeFactor;
 
     // Attraction Radius scales with Container
-    const attractionRadius = containerRadius * 0.75; // 75% of container
+    const attractionRadius = containerRadius * 0.95; // 95% of container (closer to the Rim)
 
     const center = { x: width / 2, y: height / 2 };
 
@@ -58,11 +128,17 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
         // Validation: Need dimensions and data
         if (!width || !height || width <= 0 || height <= 0 || data.length === 0) return;
 
-        // Dynamic Bubble Scaling
-        // Inverse relationship with node count to optimize screen real estate.
-        // Few nodes (e.g. 5) -> Larger bubbles (~1.2 scale)
-        // Many nodes (e.g. 100) -> Smaller bubbles (~0.5 scale)
-        const dynamicScale = Math.min(2.5, Math.max(0.4, 6.0 / Math.sqrt(data.length + 20)));
+        // Dynamic Bubble Scaling (Tuned - Iteration 5)
+        // Tune: Extend the "Big Bubble" logic to 40 genres.
+        // We fade the boost from 4.5x (at 1 genre) down to ~1.0x (at 40 genres).
+        let dynamicScale = 1.0;
+        if (count < 40) {
+            // Linear drop from 4.5 to 1.0 over 40 items
+            const boost = 3.5 * (1 - (count / 40));
+            dynamicScale = 1.0 + boost;
+        } else {
+            dynamicScale = Math.max(0.4, 6.0 / Math.sqrt(count + 6));
+        }
 
         // Window-Relative Unit
         // If window is 1000px, unit is 1. If 500px, unit is 0.5.
@@ -74,7 +150,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             const existing = nodesRef.current.find(n => n.id === d.id);
 
             // Base size: sqrt(count) for area.
-            // Middle ground multiplier (was 3.5, now 4.5).
+            // Middle ground multiplier (4.5).
             // e.g. Count 100 -> 10. * 4.5 = 45 units.
 
             // CLUSTER MODE BOOST:
@@ -84,9 +160,12 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             let radius = (Math.sqrt(d.count) * 4.5 * baseUnit + 2 * baseUnit) * dynamicScale * modeMultiplier;
 
             // Cap it relative to container 
-            // Relax cap for Cluster mode (40% vs 28%)
-            const capRatio = mode === 'CLUSTER' ? 0.40 : 0.28;
+            // Relax cap for Cluster mode (50% vs 40%)
+            const capRatio = mode === 'CLUSTER' ? 0.50 : 0.40;
             radius = Math.min(radius, containerRadius * capRatio);
+
+            // Sanity check min radius (very small, just to avoid 0)
+            radius = Math.max(2, radius);
 
             // Extracts pre-calc position from transform
             const p = (d as any).pillarPos || { x: 0, y: 0 };
@@ -119,9 +198,9 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             .alphaDecay(0.04)
             .velocityDecay(0.6)
             .force("collide", d3.forceCollide()
-                .radius((d: any) => d.radius + 2)
-                .strength(0.9)
-                .iterations(3)
+                .radius((d: any) => d.radius + 4) // Added more padding
+                .strength(1.0) // Maximum stiffness
+                .iterations(6) // More iterations to resolve overlap
             )
             .force("pillar_x", d3.forceX((d: any) => {
                 if (mode === 'GLOBAL') {
@@ -129,7 +208,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
                     return center.x + (d.targetX * attractionRadius);
                 }
                 return center.x;
-            }).strength(mode === 'GLOBAL' ? 0.3 : 0.15))
+            }).strength(mode === 'GLOBAL' ? 0.1 : 0.15)) // Relaxed strength so collision wins
 
             .force("pillar_y", d3.forceY((d: any) => {
                 if (mode === 'GLOBAL') {
@@ -137,7 +216,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
                     return center.y + (d.targetY * attractionRadius);
                 }
                 return center.y;
-            }).strength(mode === 'GLOBAL' ? 0.3 : 0.15))
+            }).strength(mode === 'GLOBAL' ? 0.1 : 0.15))
 
             .force("charge", d3.forceManyBody().strength(-10))
             .force("enclosure", () => {

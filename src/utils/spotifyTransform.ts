@@ -48,81 +48,121 @@ export function mapGenreToPillar(genre: string): PillarWeights {
 
     // 1. Exact/Strong Matches
 
-    // HIP-HOP / R&B (Priority: High, to catch Trap/Soul before Electronic)
-    if (g.includes('hip hop') || g.includes('rap') || g.includes('r&b') || g.includes('trap') || g.includes('drill') || g.includes('grime')) {
-        if (g.includes('jazz') || g.includes('neo')) return { 'R&B/Hip-Hop': 0.6, 'Jazz/Blues': 0.4 };
+    // 1. Exact/Strong Matches
+
+    // HIP-HOP / R&B (Priority: High)
+    if (g.includes('hip hop') || g.includes('rap') || g.includes('r&b') || g.includes('trap') || g.includes('drill') || g.includes('grime') || g.includes('urban')) {
+        if (g.includes('jazz') || g.includes('neo') || g.includes('soul')) return { 'R&B/Hip-Hop': 0.6, 'Jazz/Blues': 0.4 };
         if (g.includes('pop')) return { 'R&B/Hip-Hop': 0.5, 'Pop': 0.5 };
-        // "Trap" can be EDM, but in modern context usually Rap. 
-        // If it explicitly says "edm trap" or "electronic trap", we might want to split, but for now stick to Hip Hop core.
+        if (g.includes('lo-fi')) return { 'R&B/Hip-Hop': 0.4, 'Electronic': 0.4, 'Jazz/Blues': 0.2 };
         return { 'R&B/Hip-Hop': 1 };
     }
 
-    if (g.includes('soul') || g.includes('funk') || g.includes('disco')) {
+    // SOUL / FUNK / DISCO
+    if (g.includes('soul') || g.includes('funk') || g.includes('disco') || g.includes('motown') || g.includes('gospel')) {
         if (g.includes('neo')) return { 'R&B/Hip-Hop': 0.7, 'Jazz/Blues': 0.3 };
         if (g.includes('pop')) return { 'Pop': 0.6, 'R&B/Hip-Hop': 0.4 };
-        // Disco is bridge between R&B and Electronic
         if (g.includes('disco')) return { 'R&B/Hip-Hop': 0.4, 'Electronic': 0.6 };
-        return { 'R&B/Hip-Hop': 0.8, 'Jazz/Blues': 0.2 };
+        return { 'R&B/Hip-Hop': 0.7, 'Jazz/Blues': 0.3 };
     }
 
-    // POP
-    if (g.includes('pop')) {
+    // POP / K-POP / J-POP
+    if (g.includes('pop') || g.includes('k-pop') || g.includes('j-pop') || g.includes('boy band') || g.includes('girl group')) {
         if (g.includes('indie')) return { 'Pop': 0.6, 'Rock': 0.4 };
-        if (g.includes('synth') || g.includes('elect')) return { 'Pop': 0.5, 'Electronic': 0.5 };
-        if (g.includes('rap') || g.includes('hop')) return { 'Pop': 0.5, 'R&B/Hip-Hop': 0.5 };
+        if (g.includes('synth') || g.includes('elect') || g.includes('hyperpop')) return { 'Pop': 0.5, 'Electronic': 0.5 };
         if (g.includes('punk')) return { 'Pop': 0.4, 'Rock': 0.6 };
+        if (g.includes('dance')) return { 'Pop': 0.4, 'Electronic': 0.6 };
         return { 'Pop': 1 };
     }
 
-    // ROCK / METAL
-    if (g.includes('rock') || g.includes('metal') || g.includes('punk') || g.includes('grunge')) {
-        if (g.includes('soft') || g.includes('folk')) return { 'Rock': 0.5, 'Folk/Country': 0.5 };
-        if (g.includes('electronic') || g.includes('industrial')) return { 'Rock': 0.5, 'Electronic': 0.5 };
-        if (g.includes('psychedelic')) return { 'Rock': 0.7, 'Electronic': 0.3 };
+    // ROCK / METAL / PUNK
+    if (g.includes('rock') || g.includes('metal') || g.includes('punk') || g.includes('grunge') || g.includes('emo') ||
+        g.includes('hardcore') || g.includes('screamo') || g.includes('djent') || g.includes('shoegaze') || g.includes('psych')) {
+        if (g.includes('soft') || g.includes('folk') || g.includes('roots')) return { 'Rock': 0.5, 'Folk/Country': 0.5 };
+        if (g.includes('electronic') || g.includes('industrial') || g.includes('new wave')) return { 'Rock': 0.5, 'Electronic': 0.5 };
+        if (g.includes('indie')) return { 'Rock': 0.6, 'Pop': 0.4 };
         return { 'Rock': 1 };
     }
 
-    // ELECTRONIC
-    if (g.includes('electronic') || g.includes('edm') || g.includes('house') || g.includes('techno') || g.includes('dance') || g.includes('trance') || g.includes('dubstep') || g.includes('bass')) {
+    // ELECTRONIC / DANCE
+    if (g.includes('electronic') || g.includes('edm') || g.includes('house') || g.includes('techno') || g.includes('dance') ||
+        g.includes('trance') || g.includes('dubstep') || g.includes('bass') || g.includes('garage') || g.includes('jungle') ||
+        g.includes('drum and bass') || g.includes('dnb') || g.includes('idm') || g.includes('glitch') || g.includes('vaporwave') ||
+        g.includes('club') || g.includes('rave')) {
         if (g.includes('pop')) return { 'Electronic': 0.6, 'Pop': 0.4 };
-        if (g.includes('rock')) return { 'Electronic': 0.6, 'Rock': 0.4 }; // Indietronica
-        if (g.includes('ambient')) return { 'Electronic': 0.8, 'Classical': 0.2 };
+        if (g.includes('rock')) return { 'Electronic': 0.6, 'Rock': 0.4 };
+        if (g.includes('ambient') || g.includes('chill')) return { 'Electronic': 0.8, 'Classical': 0.2 };
         return { 'Electronic': 1 };
     }
 
     // JAZZ / BLUES
-    if (g.includes('jazz') || g.includes('blues') || g.includes('bossa') || g.includes('swing')) {
+    if (g.includes('jazz') || g.includes('blues') || g.includes('bossa') || g.includes('swing') || g.includes('bebop') || g.includes('fusion')) {
         if (g.includes('r&b')) return { 'Jazz/Blues': 0.6, 'R&B/Hip-Hop': 0.4 };
-        if (g.includes('pop')) return { 'Jazz/Blues': 0.4, 'Pop': 0.6 }; // Vocal jazz
+        if (g.includes('pop')) return { 'Jazz/Blues': 0.4, 'Pop': 0.6 };
+        if (g.includes('rock')) return { 'Jazz/Blues': 0.5, 'Rock': 0.5 };
         return { 'Jazz/Blues': 1 };
     }
 
-    // FOLK / COUNTRY
-    if (g.includes('country') || g.includes('folk') || g.includes('americana') || g.includes('bluegrass') || g.includes('acoustic') || g.includes('roots')) {
+    // FOLK / COUNTRY / AMERICANA
+    if (g.includes('country') || g.includes('folk') || g.includes('americana') || g.includes('bluegrass') || g.includes('acoustic') ||
+        g.includes('roots') || g.includes('singer-songwriter') || g.includes('stomp')) {
         if (g.includes('rock')) return { 'Folk/Country': 0.6, 'Rock': 0.4 };
         if (g.includes('indie')) return { 'Folk/Country': 0.7, 'Pop': 0.3 };
         return { 'Folk/Country': 1 };
     }
 
-    // CLASSICAL
-    if (g.includes('classical') || g.includes('orchestra') || g.includes('piano') || g.includes('soundtrack') || g.includes('score') || g.includes('baroque')) {
+    // CLASSICAL / ORCHESTRAL / CINEMATIC
+    if (
+        g.includes('classical') || g.includes('orchestra') || g.includes('piano') ||
+        g.includes('soundtrack') || g.includes('score') || g.includes('baroque') ||
+        g.includes('opera') || g.includes('chamber') || g.includes('choral') ||
+        g.includes('choir') || g.includes('early music') || g.includes('renaissance') ||
+        g.includes('medieval') || g.includes('concerto') || g.includes('impressionism') ||
+        g.includes('expressionism') || g.includes('ballet') || g.includes('chant') ||
+        g.includes('minimalism') || g.includes('canzone') || g.includes('cinematic')
+    ) {
         if (g.includes('ambient')) return { 'Classical': 0.5, 'Electronic': 0.5 };
         return { 'Classical': 1 };
     }
 
-    // 2. Fallbacks / Keywords
-    if (g.includes('indie')) return { 'Rock': 0.6, 'Pop': 0.4 }; // Generic Indie -> Rock/Pop
+    // 2. Specific Cultural / Niche Genres
+
+    // SKA / REGGAE / DUB
+    if (g.includes('ska') || g.includes('reggae') || g.includes('dub') || g.includes('dancehall') || g.includes('rocksteady')) {
+        // Ska is often upbeat -> Rock/Pop lean properties
+        if (g.includes('punk')) return { 'Rock': 0.7, 'R&B/Hip-Hop': 0.3 }; // Ska Punk
+        return { 'R&B/Hip-Hop': 0.4, 'Rock': 0.4, 'Pop': 0.2 }; // Island mix of rhythms
+    }
+
+    // LATIN
+    if (g.includes('latin') || g.includes('salsa') || g.includes('bachata') || g.includes('merengue') || g.includes('cumbia') ||
+        g.includes('reggaeton') || g.includes('mariachi') || g.includes('ranchera') || g.includes('mpb') || g.includes('samba')) {
+        if (g.includes('jazz') || g.includes('bossa')) return { 'Jazz/Blues': 0.7, 'Pop': 0.3 };
+        if (g.includes('reggaeton') || g.includes('urban')) return { 'R&B/Hip-Hop': 0.5, 'Pop': 0.5 };
+        return { 'Pop': 0.5, 'Folk/Country': 0.3, 'Jazz/Blues': 0.2 }; // General Latin mix
+    }
+
+    // ANIME / GAMING
+    if (g.includes('anime') || g.includes('otacore') || g.includes('video game') || g.includes('vocaloid')) {
+        return { 'Pop': 0.4, 'Electronic': 0.6 };
+    }
+
+    // WORLD / AFROBEAT
+    if (g.includes('afro') || g.includes('nigerian') || g.includes('highlife')) {
+        return { 'R&B/Hip-Hop': 0.4, 'Jazz/Blues': 0.4, 'Pop': 0.2 };
+    }
+    if (g.includes('bollywood') || g.includes('desi')) {
+        return { 'Pop': 0.6, 'Folk/Country': 0.4 }; // Folk/Pop mix
+    }
+
+    // INDIE (General Fallback)
+    if (g.includes('indie')) return { 'Rock': 0.6, 'Pop': 0.4 };
     if (g.includes('alternative')) return { 'Rock': 0.7, 'Pop': 0.3 };
-    if (g.includes('ambient') || g.includes('chill')) return { 'Electronic': 0.8, 'Classical': 0.2 };
-    if (g.includes('latin') || g.includes('reggaeton')) return { 'Pop': 0.5, 'R&B/Hip-Hop': 0.5 };
-    if (g.includes('reggae')) return { 'R&B/Hip-Hop': 0.7, 'Pop': 0.3 };
-    if (g.includes('singer-songwriter')) return { 'Folk/Country': 0.7, 'Pop': 0.3 };
 
-    // Lo-Fi Specific
-    if (g.includes('lo-fi')) return { 'R&B/Hip-Hop': 0.4, 'Electronic': 0.4, 'Jazz/Blues': 0.2 };
+    // AMBIENT (Fallback)
+    if (g.includes('ambient') || g.includes('chill') || g.includes('new age')) return { 'Electronic': 0.8, 'Classical': 0.2 };
 
-    // Default to Center (or distribution?)
-    // Unknown genres drift to center-top (Pop/Rock mix)
+    // Default to a balanced mix (Orange) if truly unknown
     return { 'Pop': 0.5, 'Rock': 0.5 };
 }
 
