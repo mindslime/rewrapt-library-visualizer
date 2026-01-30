@@ -448,16 +448,15 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                                 <PlaylistSkeleton key={i} />
                             ))
                         ) : (
-                            playlists.map((playlist, i) => (
-                                <button
+                            playlists.map((playlist) => (
+                                <motion.button
                                     key={playlist.id}
                                     onClick={() => handlePlaylistClick(playlist)}
                                     className="group text-left"
-                                    style={{
-                                        animation: `fade-in-up 0.6s ease-out forwards`,
-                                        animationDelay: `${i * 0.05}s`,
-                                        opacity: 0 // Start invisible
-                                    }}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    whileInView={{ opacity: 1, y: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ duration: 0.4 }}
                                 >
                                     <div className="aspect-square bg-[#181818] rounded-lg overflow-hidden mb-3 shadow-lg group-hover:shadow-green-900/20 group-hover:scale-105 transition-all duration-300 relative">
                                         {playlist.images?.[0]?.url ? (
@@ -479,17 +478,21 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                                     </div>
                                     <h3 className="font-bold text-white truncate px-1 group-hover:text-green-400 transition-colors">{playlist.name}</h3>
                                     <p className="text-xs text-zinc-400 px-1 truncate">{playlist.tracks?.total} tracks</p>
-                                </button>
+                                </motion.button>
                             ))
                         )}
                     </div>
                 ) : (
                     <div className="flex flex-col gap-2">
                         {playlists.map((playlist) => (
-                            <button
+                            <motion.button
                                 key={playlist.id}
                                 onClick={() => handlePlaylistClick(playlist)}
                                 className="group flex items-center gap-4 p-3 bg-[#181818] hover:bg-[#282828] rounded-xl transition-all"
+                                initial={{ opacity: 0, y: 10 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ duration: 0.3 }}
                             >
                                 <div className="w-12 h-12 bg-zinc-800 rounded flex-shrink-0 overflow-hidden relative">
                                     {playlist.images?.[0]?.url ? (
@@ -513,7 +516,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                                 <div className="p-2 text-zinc-600 group-hover:text-green-500 transition-colors">
                                     <Music className="w-5 h-5" />
                                 </div>
-                            </button>
+                            </motion.button>
                         ))}
                     </div>
                 )}
