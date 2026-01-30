@@ -16,7 +16,7 @@ interface MusicCanvasProps {
 export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mode = 'GLOBAL' }: MusicCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+    const [dimensions, setDimensions] = useState({ width: 0, height: 0, dpr: 1 });
 
     // Zoom State
     const transformRef = useRef(d3.zoomIdentity); // { k, x, y }
@@ -39,7 +39,8 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
             if (containerRef.current) {
                 setDimensions({
                     width: containerRef.current.clientWidth,
-                    height: containerRef.current.clientHeight
+                    height: containerRef.current.clientHeight,
+                    dpr: window.devicePixelRatio || 1
                 });
             }
         };
@@ -114,12 +115,17 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
             const height = canvas.height;
             const { k, x, y } = transformRef.current;
             const simNodes = nodesRef.current;
-            const center = { x: width / 2, y: height / 2 };
+            // Use logical dimensions for center calculation since we scale the context
+            const center = { x: dimensions.width / 2, y: dimensions.height / 2 };
 
             // Clear
             context.clearRect(0, 0, width, height);
 
             context.save();
+            // Handle High DPI
+            const dpr = dimensions.dpr || 1;
+            context.scale(dpr, dpr);
+
             context.translate(x, y);
             context.scale(k, k);
 
@@ -443,8 +449,9 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
         <div ref={containerRef} className="w-full h-full relative bg-zinc-950 overflow-hidden">
             <canvas
                 ref={canvasRef}
-                width={dimensions.width}
-                height={dimensions.height}
+                width={dimensions.width * (dimensions.dpr || 1)}
+                height={dimensions.height * (dimensions.dpr || 1)}
+                style={{ width: dimensions.width, height: dimensions.height }}
                 className="block cursor-move"
             />
 
