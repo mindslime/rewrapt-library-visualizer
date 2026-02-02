@@ -113,7 +113,10 @@ export default function Home() {
   }, [session]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-black font-[family-name:var(--font-geist-sans)] overflow-x-hidden">
+    <div className={`flex flex-col bg-black font-[family-name:var(--font-geist-sans)] ${!session
+        ? 'h-screen overflow-hidden sm:h-auto sm:min-h-screen sm:overflow-y-auto sm:overflow-x-hidden'
+        : 'min-h-screen overflow-x-hidden'
+      }`}>
 
       {/* Responsive Header / Navbar - Only show when logged in */}
       {session && (
@@ -123,10 +126,10 @@ export default function Home() {
         >
           {/* Mobile Title (Always visible on mobile) */}
           <div className={`sm:hidden font-bold text-xl tracking-tight pointer-events-auto ${isDetailView
-              ? (currentViewMode === 'TIMELINE'
-                ? 'fixed top-[82px] right-4 z-[102] !opacity-50 !pointer-events-none'
-                : 'fixed bottom-4 right-4 z-[102] opacity-30 !pointer-events-none')
-              : ''
+            ? (currentViewMode === 'TIMELINE'
+              ? 'fixed top-[82px] right-4 z-[102] !opacity-50 !pointer-events-none'
+              : 'fixed bottom-4 right-4 z-[102] opacity-30 !pointer-events-none')
+            : ''
             }`}>
             {session ? (
               <AnimatedTitle
