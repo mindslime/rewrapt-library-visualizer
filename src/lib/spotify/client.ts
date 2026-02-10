@@ -59,24 +59,7 @@ export async function getAllLikedSongs(accessToken: string, maxLimit = 1000) {
     return allTracks;
 }
 
-export async function getAudioFeatures(accessToken: string, ids: string[]) {
-    // Max 100 IDs per request
-    const chunks = [];
-    for (let i = 0; i < ids.length; i += 100) {
-        chunks.push(ids.slice(i, i + 100));
-    }
-
-    const features = await Promise.all(
-        chunks.map(chunk =>
-            spotifyFetch<{ audio_features: SpotifyApi.AudioFeaturesObject[] }>("/audio-features", {
-                accessToken,
-                params: { ids: chunk.join(",") },
-            })
-        )
-    );
-
-    return features.flatMap(f => f.audio_features);
-}
+// Deprecated: getAudioFeatures removed.
 
 export async function getArtists(accessToken: string, ids: string[]) {
     // Max 50 IDs per request

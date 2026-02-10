@@ -24,7 +24,7 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
     const prevMode = useRef(mode);
 
     // Init Simulation
-    const { simulationRef, nodesRef, containerRadius } = useMusicSimulation({
+    const { simulationRef, nodesRef, containerRadius, simulationBounds } = useMusicSimulation({
         data: nodes,
         width: dimensions.width,
         height: dimensions.height,
@@ -52,7 +52,7 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
         return () => resizeObserver.disconnect();
     }, []);
 
-    // Render Loop
+    // Render Loop & Zoom Logic
     useEffect(() => {
         if (!canvasRef.current || !simulationRef.current) return;
         const canvas = canvasRef.current;
@@ -62,16 +62,87 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
         // Hover State (Local to effect)
         let hoveredNode: SimulationNode | null = null;
 
-        // --- ZOOM STATE MANAGEMENT ---
+        // --- ZOOM SETUP ---
+        // Center of the "World" (where nodes spawning centered at)
+        const cx = dimensions.width / 2;
+        const cy = dimensions.height / 2;
+
+        let minScale = 1;
+        let extent: [[number, number], [number, number]] = [[0, 0], [dimensions.width, dimensions.height]];
+
+        if (mode === 'GLOBAL') {
+            // GLOBAL MODE: Smart constraints
+            // Calculate scale to fit the Galaxy (~containerRadius) within the view
+            // We want to limit zooming out so the galaxy is never smaller than ~60% of the screen
+            const galaxyDiameter = containerRadius * 2;
+            const viewportMin = Math.min(dimensions.width, dimensions.height);
+
+            // Target: scaledGalaxy >= viewportMin * 0.6
+            // Scale >= (viewportMin * 0.6) / galaxyDiameter
+            // Default containerRadius is approx 0.45 * minDim, so fitScale ~= 0.66
+            const fitScale = (viewportMin * 0.6) / Math.max(1, galaxyDiameter);
+            minScale = Math.max(0.4, fitScale); // Absolute floor to prevent microscopic view
+
+            // Pan limits: Allow 50% padding around the viewport
+            // Prevents losing the galaxy entirely
+            const panPadding = Math.min(dimensions.width, dimensions.height) * 0.8;
+            extent = [[-panPadding, -panPadding], [dimensions.width + panPadding, dimensions.height + panPadding]];
+
+        } else {
+            // CLUSTER MODE: Strict "Infinite Canvas" Lock
+            // Calculate scale to FILL viewport
+            const scaleX = dimensions.width / simulationBounds.width;
+            const scaleY = dimensions.height / simulationBounds.height;
+            const fillScale = Math.max(scaleX, scaleY);
+
+            // Min Zoom = The level where content touches edges. Can't zoom out further.
+            minScale = isFinite(fillScale) && fillScale > 0 ? fillScale : 1;
+
+            // Constraint: Can only pan within the virtual bounds.
+            // Virtual bounds are centered at cx, cy.
+            // So [cx - virtualW/2, cy - virtualH/2] to [cx + virtualW/2, ...]
+            extent = [
+                [cx - simulationBounds.width / 2, cy - simulationBounds.height / 2],
+                [cx + simulationBounds.width / 2, cy + simulationBounds.height / 2]
+            ];
+        }
+
+        const zoom = d3.zoom()
+            .scaleExtent([minScale, 8])
+            .translateExtent(extent)
+            .on("zoom", (event) => {
+                transformRef.current = event.transform;
+            });
+
+        const selection = d3.select(canvas);
+        selection.call(zoom as any);
+
+        // --- STATE SYNC & AUTO-ZOOM ---
         if (mode !== prevMode.current) {
             if (prevMode.current === 'GLOBAL' && mode === 'CLUSTER') {
+                // Entering Cluster: Save Global, Auto-Zoom to Fill
                 savedGlobalTransform.current = transformRef.current;
-                transformRef.current = d3.zoomIdentity;
+
+                // Animate to the fill view (Scale around Center)
+                // translate(cx, cy).scale(s).translate(-cx, -cy)
+                const initialTransform = d3.zoomIdentity
+                    .translate(cx, cy)
+                    .scale(minScale)
+                    .translate(-cx, -cy);
+
+                selection.call(zoom.transform as any, initialTransform);
+                transformRef.current = initialTransform;
+
             } else if (prevMode.current === 'CLUSTER' && mode === 'GLOBAL') {
+                // Exiting Cluster: Restore Global
+                // We also need to update the zoom behavior (re-bind) which happens automatically on render
+                // But we must manually restore the transform
+                selection.call(zoom.transform as any, savedGlobalTransform.current);
                 transformRef.current = savedGlobalTransform.current;
             }
             prevMode.current = mode;
         }
+
 
         const getHoveredNode = (e: MouseEvent): SimulationNode | null => {
             const rect = canvas.getBoundingClientRect();
@@ -422,17 +493,9 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
         };
         tick();
 
-        // Zoom Listener
-        const zoom = d3.zoom()
-            .scaleExtent([0.1, 12])
-            .on("zoom", (event) => {
-                transformRef.current = event.transform;
-            });
-
         // Apply Zoom and Sync State
-        const selection = d3.select(canvas);
-        selection.call(zoom as any);
-        selection.call(zoom.transform as any, transformRef.current);
+        // Remove old listeners
+        // Re-apply zoom if bounds changed
 
         canvas.addEventListener('click', handleClick);
         canvas.addEventListener('mousemove', handleMouseMove);
@@ -442,8 +505,9 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
             canvas.removeEventListener('mousemove', handleMouseMove);
             simulationRef.current?.on('tick', null);
             cancelAnimationFrame(animationFrameId);
+            selection.on(".zoom", null); // Clean up zoom
         };
-    }, [dimensions, mode, containerRadius]);
+    }, [dimensions, mode, containerRadius, simulationBounds]);
 
     return (
         <div ref={containerRef} className="w-full h-full relative bg-zinc-950 overflow-hidden">

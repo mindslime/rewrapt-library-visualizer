@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useState, useRef } from "react";
-import { ChevronLeft, Music, Users, Library, Activity, Circle, List, LayoutGrid } from "lucide-react";
+import { Palette, ChevronLeft, Music, Users, Library, Activity, Circle, List, LayoutGrid } from "lucide-react";
 import { motion } from "framer-motion";
 import GenreMap from "./vis/GenreMap";
 import TimelineVis from "./vis/TimelineVis";
@@ -117,7 +117,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
             // 3. Map Artists -> Genres
             const artistMap = new Map(allArtists.map(a => [a.id, a]));
 
-            // SAVE DATA FOR TIMELINE
+            // SAVE DATA FOR TIMELINE & ART
             setAllTracks(tracks);
             setArtistDetails(artistMap);
 
@@ -194,8 +194,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
             if (cachedTracks.length > 0) {
                 if (!signal.aborted) {
-                    setLoading(false);
-                    processTracks(cachedTracks, "Your Library", signal);
+                    await processTracks(cachedTracks, "Your Library", signal);
                 }
             } else {
                 if (!signal.aborted) {

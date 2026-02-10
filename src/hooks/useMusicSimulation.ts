@@ -30,6 +30,8 @@ interface UseMusicSimulationProps {
 export function useMusicSimulation({ data, width, height, mode }: UseMusicSimulationProps) {
     const simulationRef = useRef<d3.Simulation<SimulationNode, undefined> | null>(null);
     const nodesRef = useRef<SimulationNode[]>([]);
+    // Track the "virtual" size of the canvas (Infinite Canvas)
+    const [simulationBounds, setSimulationBounds] = useState({ width: width, height: height });
 
     // Dynamic Container Radius Calculation
     // Small playlist = Smaller ring to keep density high.
@@ -124,7 +126,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
 
     // CLUSTER MODE: Always use Max Radius to fill the screen
     const containerRadius = mode === 'CLUSTER'
-        ? minDim * 0.60
+        ? minDim * 0.90
         : minDim * sizeFactor;
 
     // Attraction Radius scales with Container
@@ -152,26 +154,44 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
         // Window-Relative Unit
         // If window is 1000px, unit is 1. If 500px, unit is 0.5.
         // This allows bubbles to scale with the window size.
+        // Window-Relative Unit
+        // If window is 1000px, unit is 1. If 500px, unit is 0.5.
+        // This allows bubbles to scale with the window size.
         const baseUnit = Math.min(width, height) / 1000;
+        const isMobile = width < 600;
 
         // 1. Prepare Nodes
         const newNodes: SimulationNode[] = data.map(d => {
-            const existing = nodesRef.current.find(n => n.id === d.id);
+            // FORCE RESET IN CLUSTER MODE:
+            // If we are in CLUSTER mode, we want a fresh "Big Bang" explosion from the center.
+            // We ignore any existing nodes (even if IDs match) to ensure they spawn at spawnX/Y.
+            const existing = mode === 'CLUSTER' ? undefined : nodesRef.current.find(n => n.id === d.id);
 
             // Base size: sqrt(count) for area.
             // Middle ground multiplier (4.5).
             // e.g. Count 100 -> 10. * 4.5 = 45 units.
 
-            // CLUSTER MODE BOOST:
-            // If in cluster mode, we want bigger bubbles to fill the view.
-            const modeMultiplier = mode === 'CLUSTER' ? 2.5 : 1.0;
+            // CLUSTER MODE BOOST (Dynamic based on count):
+            // Iteration 5: User wants them bigger and closer.
+            // Uniform boost to make them clearly visible.
+            // Iteration 9: Mobile Optimization (2.0x vs 3.0x)
+            // Iteration 11: Max Density (2.5x vs 4.0x) - Bigger!
+            // Iteration 18: Dynamic Sizing based on Screen Size
+            // Scale multiplier from 2.5 (small screen) to 6.0 (large screen)
+            // Base unit is 1000px.
+            const minDim = Math.min(width, height);
+            let clusterMultiplier = 4.0 * (minDim / 800);
+            clusterMultiplier = Math.max(2.5, Math.min(6.0, clusterMultiplier));
+
+            const modeMultiplier = mode === 'CLUSTER' ? clusterMultiplier : 1.0;
 
             let radius = (Math.sqrt(d.count) * 4.5 * baseUnit + 2 * baseUnit) * dynamicScale * modeMultiplier;
             radius *= autoZoom; // Apply auto-zoom
 
             // Cap it relative to container 
-            // Relax cap for Cluster mode (50% vs 40%)
-            const capRatio = mode === 'CLUSTER' ? 0.50 : 0.40;
+            // Cap at 35% for Cluster (Desktop) to allow 3 large bubbles to share the screen
+            // Allow 45% on Mobile (Vertical stacking / taller aspect ratio)
+            const capRatio = mode === 'CLUSTER' ? (isMobile ? 0.45 : 0.35) : 0.40;
             radius = Math.min(radius, containerRadius * capRatio);
 
             // Sanity check min radius (very small, just to avoid 0)
@@ -179,8 +199,12 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
 
             // Extracts pre-calc position from transform
             const p = (d as any).pillarPos || { x: 0, y: 0 };
-            const spawnX = center.x + (p.x * attractionRadius);
-            const spawnY = center.y + (p.y * attractionRadius);
+
+            // FIX STRAGGLERS: In CLUSTER mode, force everyone to spawn at the center.
+            // This ensures the "Big Bang" expansion includes everyone.
+            // In GLOBAL mode, they spawn at their pillar positions.
+            const spawnX = mode === 'CLUSTER' ? center.x : center.x + (p.x * attractionRadius);
+            const spawnY = mode === 'CLUSTER' ? center.y : center.y + (p.y * attractionRadius);
 
             return {
                 ...existing,
@@ -200,17 +224,76 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
 
         nodesRef.current = newNodes;
 
+        // 3. INFINITE CANVAS CALCULATION
+        // Calculate how much space we *actually* need.
+        // If the bubbles need more room than the screen provided, we expand the bounds.
+        let virtualWidth = width;
+        let virtualHeight = height;
+
+        if (mode === 'CLUSTER') {
+            // Sum of bubble areas + padding
+            const padding = 2;
+            const totalArea = newNodes.reduce((acc, node) => {
+                const r = node.radius + (padding * baseUnit);
+                return acc + (Math.PI * r * r);
+            }, 0);
+
+            // Packing Factor: Circles don't pack perfectly.
+            // Iteration 21: Relax padding for small clusters (large bubbles) to avoid edge collision
+            // Small clusters (<20): 1.25x (More room for big bubbles)
+            // Large clusters: 1.1x (Standard tight fit)
+            const packingFactor = newNodes.length < 20 ? 1.25 : 1.1;
+            const requiredArea = totalArea * packingFactor;
+
+            // Aspect Ratio Lock (Screen Shape)
+            const aspectRatio = width / height;
+
+            // h * (h * ar) = area  =>  h = sqrt(area / ar)
+            let vH = Math.sqrt(requiredArea / aspectRatio);
+            let vW = vH * aspectRatio;
+
+            // Ensure we never shrink smaller than the actual viewport
+            if (vW < width) {
+                vW = width;
+                vH = height;
+            }
+
+            virtualWidth = vW;
+            virtualHeight = vH;
+        }
+
+        // Update bounds state for external consumers (like Zoom constraints)
+        setSimulationBounds({ width: virtualWidth, height: virtualHeight });
+
         // 2. Setup Force Simulation
         if (simulationRef.current) simulationRef.current.stop();
 
+        // Dynamic Padding based on Count
+        // Iteration 7: Restrict high padding to CLUSTER mode.
+        // Cluster = 10 (Avoid overlap), Global = 4 (Tight packing for pillars)
+        // Iteration 9: Mobile Optimization (Cluster = 5 for tighter packing)
+        // Iteration 11: Max Density (Cluster = 2 for tightest packing)
+        let clusterPadding = mode === 'CLUSTER' ? 2 : 4;
+
+        // Iteration 10: Dynamic Gravity for Infinite Canvas
+        // If we have a large cluster (>25) and are in Cluster mode,
+        // we cut gravity to effectively zero (0.005).
+        // This allows the bubbles to drift out to the virtual boundaries (Infinite Canvas).
+        // For small clusters, we keep them cohesive (0.15).
+        // Iteration 12: Increased Gravity (0.02) to prevent excessive spreading
+        // Iteration 16: Max Screen Fill - Disable gravity for ALL clusters to let them expand to edges
+        // Iteration 19: Gravity Restored (0.15) to pull bubbles into a cohesive mass.
+        // We rely on Tight Bounds + Auto-Zoom to fill the screen, rather than Repulsion.
+        const centerStrength = mode === 'GLOBAL' ? 0.1 : 0.15;
+
         simulationRef.current = d3.forceSimulation<SimulationNode>(newNodes)
             .alpha(1)
-            .alphaDecay(0.04)
+            .alphaDecay(0.02) // Slower decay = Longer simulation time to pull in stragglers
             .velocityDecay(0.6)
             .force("collide", d3.forceCollide()
-                .radius((d: any) => d.radius + (4 * baseUnit)) // Responsive padding (was +4)
+                .radius((d: any) => d.radius + (clusterPadding * baseUnit))
                 .strength(1.0) // Maximum stiffness
-                .iterations(6) // More iterations to resolve overlap
+                .iterations(20) // Extreme iterations to resolve stressful overlap
             )
             .force("pillar_x", d3.forceX((d: any) => {
                 if (mode === 'GLOBAL') {
@@ -218,7 +301,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
                     return center.x + (d.targetX * attractionRadius);
                 }
                 return center.x;
-            }).strength(mode === 'GLOBAL' ? 0.1 : 0.15)) // Relaxed strength so collision wins
+            }).strength(centerStrength))
 
             .force("pillar_y", d3.forceY((d: any) => {
                 if (mode === 'GLOBAL') {
@@ -226,34 +309,72 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
                     return center.y + (d.targetY * attractionRadius);
                 }
                 return center.y;
-            }).strength(mode === 'GLOBAL' ? 0.1 : 0.15))
+            }).strength(centerStrength))
 
             .force("charge", d3.forceManyBody().strength(-10 * baseUnit))
             .force("enclosure", () => {
                 const limit = containerRadius;
 
+                // Virtual Bounds for Infinite Canvas
+                const halfW = virtualWidth / 2;
+                const halfH = virtualHeight / 2;
+                const minX = center.x - halfW;
+                const maxX = center.x + halfW;
+                const minY = center.y - halfH;
+                const maxY = center.y + halfH;
+
                 nodesRef.current.forEach(node => {
                     if (!node.x || !node.y || isNaN(node.x) || isNaN(node.y)) return;
-                    const dx = node.x - center.x;
-                    const dy = node.y - center.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    const nodeReach = dist + node.currentRadius;
 
-                    if (nodeReach > limit) {
-                        const angle = Math.atan2(dy, dx);
-                        const allowedDist = Math.max(0, limit - node.currentRadius);
+                    if (mode === 'CLUSTER') {
+                        // RECTANGULAR BOUNDARY for Cluster Mode
+                        // Use VIRTUAL bounds (may be larger than screen)
+                        const r = node.currentRadius;
 
-                        node.x = center.x + Math.cos(angle) * allowedDist;
-                        node.y = center.y + Math.sin(angle) * allowedDist;
+                        // X Bounds
+                        if (node.x < minX + r) {
+                            node.x = minX + r;
+                            node.vx = (node.vx || 0) * -0.5; // Bounce/Dampen
+                        } else if (node.x > maxX - r) {
+                            node.x = maxX - r;
+                            node.vx = (node.vx || 0) * -0.5;
+                        }
 
-                        node.vx = (node.vx || 0) * 0.1;
-                        node.vy = (node.vy || 0) * 0.1;
+                        // Y Bounds
+                        if (node.y < minY + r) {
+                            node.y = minY + r;
+                            node.vy = (node.vy || 0) * -0.5;
+                        } else if (node.y > maxY - r) {
+                            node.y = maxY - r;
+                            node.vy = (node.vy || 0) * -0.5;
+                        }
+
+                    } else {
+                        // CIRCULAR BOUNDARY for Global Mode
+                        const dx = node.x - center.x;
+                        const dy = node.y - center.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const nodeReach = dist + node.currentRadius;
+
+                        if (nodeReach > limit) {
+                            const angle = Math.atan2(dy, dx);
+                            const allowedDist = Math.max(0, limit - node.currentRadius);
+
+                            node.x = center.x + Math.cos(angle) * allowedDist;
+                            node.y = center.y + Math.sin(angle) * allowedDist;
+
+                            node.vx = (node.vx || 0) * 0.1;
+                            node.vy = (node.vy || 0) * 0.1;
+                        }
                     }
                 });
             });
 
         if (mode === 'CLUSTER') {
-            simulationRef.current.force("charge", d3.forceManyBody().strength(d => -((d as any).radius) * 2));
+            if (mode === 'CLUSTER') {
+                // Standard Repulsion (1.0x) - let Gravity do the work of cohesion
+                simulationRef.current.force("charge", d3.forceManyBody().strength(d => -((d as any).radius) * 1.0));
+            }
         }
 
         simulationRef.current.restart();
@@ -269,6 +390,7 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
         nodes: nodesRef.current,
         simulationRef,
         nodesRef,
-        containerRadius // Export this!
+        containerRadius, // Export this!
+        simulationBounds // Export virtual bounds
     };
 }

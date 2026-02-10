@@ -1,4 +1,4 @@
-import { getAllLikedSongs, getArtists, getAudioFeatures } from "./spotify/client";
+import { getAllLikedSongs, getArtists } from "./spotify/client";
 import { SongNode } from "@/types";
 
 export async function processLibrary(accessToken: string): Promise<SongNode[]> {
@@ -17,15 +17,9 @@ export async function processLibrary(accessToken: string): Promise<SongNode[]> {
     const artists = await getArtists(accessToken, Array.from(artistIds));
     const artistMap = new Map(artists.map(a => [a.id, a]));
 
-    // 4. Extract Track IDs for Audio Features
-    const trackIds = songs.map(s => s.track.id);
-    const audioFeatures = await getAudioFeatures(accessToken, trackIds);
-    const featuresMap = new Map(audioFeatures.map(f => [f?.id, f]));
-
-    // 5. Merge Data
+    // 4. Merge Data (Minus Audio Features)
     const nodes: SongNode[] = songs.map(item => {
         const track = item.track;
-        const features = featuresMap.get(track.id);
 
         // Aggregate genres from all artists on the track
         const genres = new Set<string>();
@@ -49,11 +43,12 @@ export async function processLibrary(accessToken: string): Promise<SongNode[]> {
             previewUrl: track.preview_url,
             image: track.album.images[0]?.url || null,
 
-            danceability: features?.danceability,
-            energy: features?.energy,
-            valence: features?.valence,
-            acousticness: features?.acousticness,
-            tempo: features?.tempo,
+            // Audio Features are deprecated
+            danceability: undefined,
+            energy: undefined,
+            valence: undefined,
+            acousticness: undefined,
+            tempo: undefined,
         };
     });
 

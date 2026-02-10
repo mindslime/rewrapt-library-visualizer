@@ -114,8 +114,8 @@ export default function Home() {
 
   return (
     <div className={`flex flex-col bg-black font-[family-name:var(--font-geist-sans)] ${!session
-        ? 'h-screen overflow-hidden sm:h-auto sm:min-h-screen sm:overflow-y-auto sm:overflow-x-hidden'
-        : 'min-h-screen overflow-x-hidden'
+      ? 'h-screen overflow-hidden sm:h-auto sm:min-h-screen sm:overflow-y-auto sm:overflow-x-hidden'
+      : 'min-h-screen overflow-x-hidden'
       }`}>
 
       {/* Responsive Header / Navbar - Only show when logged in */}
@@ -190,8 +190,9 @@ export default function Home() {
             </div>
 
           </div>
-        </header>
-      )}
+        </header >
+      )
+      }
 
       <main className={`flex-1 flex flex-col items-center p-4 gap-6 sm:p-20 text-center mt-12 sm:mt-0 transition-all duration-500 ease-in-out ${!session ? 'justify-center' : 'justify-start'}`}>
 

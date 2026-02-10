@@ -19,8 +19,10 @@ export interface SpotifyTrack {
     duration_ms: number;
     popularity: number;
     preview_url: string | null;
+    explicit?: boolean;
     added_at?: string; // Date string
     uri: string;
+    is_local?: boolean;
     external_urls: {
         spotify: string;
     };
@@ -28,7 +30,9 @@ export interface SpotifyTrack {
         name: string;
         images: SpotifyImage[];
         uri: string; // Add album URI too
+        release_date: string;
     };
+    audio_features?: SpotifyAudioFeatures;
 }
 
 export interface SpotifyPlaylist {
@@ -59,4 +63,25 @@ export interface GenreNode {
     y?: number;
     vx?: number;
     vy?: number;
+}
+
+export interface SpotifyAudioFeatures {
+    danceability: number;
+    energy: number;
+    key: number;
+    loudness: number;
+    mode: number;
+    speechiness: number;
+    acousticness: number;
+    instrumentalness: number;
+    liveness: number;
+    valence: number;
+    tempo: number;
+    type: "audio_features";
+    id: string;
+    uri: string;
+    track_href: string;
+    analysis_url: string;
+    duration_ms: number;
+    time_signature: number;
 }

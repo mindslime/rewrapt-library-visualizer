@@ -1,4 +1,8 @@
-import { SpotifyArtist, SpotifyTrack, SpotifyPlaylist } from "@/types/spotify";
+import { SpotifyArtist, SpotifyTrack, SpotifyPlaylist, SpotifyAudioFeatures } from "@/types/spotify";
+
+
+// Deprecated: fetchAudioFeatures removed due to Spotify API policy changes (May 2025)
+
 
 export async function fetchPlaylistTracks(accessToken: string, playlistId: string, onProgress?: (loaded: number, total: number) => void, signal?: AbortSignal): Promise<SpotifyTrack[]> {
     let tracks: SpotifyTrack[] = [];
