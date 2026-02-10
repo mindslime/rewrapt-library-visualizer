@@ -242,7 +242,11 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             // Iteration 21: Relax padding for small clusters (large bubbles) to avoid edge collision
             // Small clusters (<20): 1.25x (More room for big bubbles)
             // Large clusters: 1.1x (Standard tight fit)
-            const packingFactor = newNodes.length < 20 ? 1.25 : 1.1;
+            // Iteration 22: ZOOM OUT (User Request)
+            // We drastically increase packing factor to 1.5x - 1.8x.
+            // This makes the "world" bigger, so the auto-zoom zooms OUT.
+            // Result: Bubbles look smaller, and have huge margins to float in without hitting edges.
+            const packingFactor = newNodes.length < 20 ? 1.8 : 1.5;
             const requiredArea = totalArea * packingFactor;
 
             // Aspect Ratio Lock (Screen Shape)
@@ -327,27 +331,42 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
                     if (!node.x || !node.y || isNaN(node.x) || isNaN(node.y)) return;
 
                     if (mode === 'CLUSTER') {
-                        // RECTANGULAR BOUNDARY for Cluster Mode
-                        // Use VIRTUAL bounds (may be larger than screen)
+                        // SOFT WALLS (Anti-Vibration)
+                        // Instead of hard resetting position (which causes jitter when fighting collision forces),
+                        // we apply a strong velocity correction ("Restoring Force") when out of bounds.
                         const r = node.currentRadius;
+                        const wallStiffness = 0.5; // How strongly we push back (0.0 - 1.0)
 
-                        // X Bounds
+                        // Left
                         if (node.x < minX + r) {
-                            node.x = minX + r;
-                            node.vx = (node.vx || 0) * -0.5; // Bounce/Dampen
-                        } else if (node.x > maxX - r) {
-                            node.x = maxX - r;
-                            node.vx = (node.vx || 0) * -0.5;
+                            const penetration = (minX + r) - node.x;
+                            node.vx = (node.vx || 0) + (penetration * wallStiffness);
+                        }
+                        // Right
+                        else if (node.x > maxX - r) {
+                            const penetration = node.x - (maxX - r);
+                            node.vx = (node.vx || 0) - (penetration * wallStiffness);
                         }
 
-                        // Y Bounds
+                        // Top
                         if (node.y < minY + r) {
-                            node.y = minY + r;
-                            node.vy = (node.vy || 0) * -0.5;
-                        } else if (node.y > maxY - r) {
-                            node.y = maxY - r;
-                            node.vy = (node.vy || 0) * -0.5;
+                            const penetration = (minY + r) - node.y;
+                            node.vy = (node.vy || 0) + (penetration * wallStiffness);
                         }
+                        // Bottom
+                        else if (node.y > maxY - r) {
+                            const penetration = node.y - (maxY - r);
+                            node.vy = (node.vy || 0) - (penetration * wallStiffness);
+                        }
+
+                        // HARD CLAMP SAFETY NET
+                        // If they get BLASTED way out (e.g. > 10% past limit), hard clamp them to save the sim.
+                        const safetyMargin = minDim * 0.1;
+
+                        if (node.x < minX - safetyMargin) { node.x = minX + r; node.vx = 0; }
+                        if (node.x > maxX + safetyMargin) { node.x = maxX - r; node.vx = 0; }
+                        if (node.y < minY - safetyMargin) { node.y = minY + r; node.vy = 0; }
+                        if (node.y > maxY + safetyMargin) { node.y = maxY - r; node.vy = 0; }
 
                     } else {
                         // CIRCULAR BOUNDARY for Global Mode
