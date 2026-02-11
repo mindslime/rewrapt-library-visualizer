@@ -300,30 +300,74 @@ export function transformTracksToNodes(
         artists: Set<string>;
         topTracks: SpotifyTrack[];
         tracks: SpotifyTrack[];
+        trackIds: Set<string>; // Deduplication set
     }>();
 
+    // Deduplicate input tracks effectively by tracking IDs globally processed? 
+    // Or just robustly handle them in the groups.
+    const processedTrackIds = new Set<string>();
+
     tracks.forEach(track => {
+        if (processedTrackIds.has(track.id)) return; // Global dedupe of input
+        processedTrackIds.add(track.id);
+
+        const trackGenres = new Set<string>(); // Genres this track belongs to
+
         track.artists.forEach(a => {
             const artistDetails = artistMap.get(a.id);
             if (artistDetails && artistDetails.genres) {
                 artistDetails.genres.forEach(genre => {
-                    const g = genre.toLowerCase(); // normalize
-                    if (!genreGroups.has(g)) {
-                        genreGroups.set(g, {
-                            count: 0,
-                            artists: new Set(),
-                            topTracks: [],
-                            tracks: []
-                        });
-                    }
-                    const group = genreGroups.get(g)!;
-                    group.count++;
-                    group.artists.add(a.name);
-                    group.tracks.push(track);
-                    // Keep a sample
-                    if (group.topTracks.length < 5) group.topTracks.push(track);
+                    trackGenres.add(genre.toLowerCase());
                 });
             }
+        });
+
+        // Re-implementing the loop to capture specific artist-genre association 
+        // BUT ensuring we don't add the track twice to the group.
+
+        // Actually, the previous logic: "Iterate artists -> Iterate genres -> Add"
+        // led to: Artist A (Pop) -> Add Track to Pop. Artist B (Pop) -> Add Track to Pop.
+        // We want: Artist A (Pop) OR Artist B (Pop) -> Add Track to Pop (ONCE).
+
+        const genresForThisTrack = new Set<string>();
+
+        track.artists.forEach(a => {
+            const artistDetails = artistMap.get(a.id);
+            if (artistDetails && artistDetails.genres) {
+                artistDetails.genres.forEach(genre => {
+                    genresForThisTrack.add(genre.toLowerCase());
+                });
+            }
+        });
+
+        genresForThisTrack.forEach(g => {
+            if (!genreGroups.has(g)) {
+                genreGroups.set(g, {
+                    count: 0,
+                    artists: new Set(),
+                    topTracks: [],
+                    tracks: [],
+                    trackIds: new Set()
+                });
+            }
+            const group = genreGroups.get(g)!;
+            group.count++;
+            group.tracks.push(track);
+            group.trackIds.add(track.id);
+            if (group.topTracks.length < 5) group.topTracks.push(track);
+
+            // Add Artists involved in this genre
+            track.artists.forEach(a => {
+                // Check if THIS artist is associated with THIS genre?
+                // Original logic: "if artistDetails.genres checks out..."
+                // But effectively, if a track is in Pop, all its artists are relevant to that node?
+                // Or typically we only list artists that *are* Pop.
+                // Let's check:
+                const aDetails = artistMap.get(a.id);
+                if (aDetails?.genres?.some(gx => gx.toLowerCase() === g)) {
+                    group.artists.add(a.name);
+                }
+            });
         });
     });
 
@@ -335,15 +379,24 @@ export function transformTracksToNodes(
 
         // Children (Artists)
         // Group tracks by artist within this genre for drill-down
-        const artistGroups = new Map<string, { count: number, tracks: SpotifyTrack[] }>();
+        // Deduplicate tracks per artist
+        const artistGroups = new Map<string, { count: number, tracks: SpotifyTrack[], trackIds: Set<string> }>();
+
         data.tracks.forEach(t => {
             t.artists.forEach(a => {
-                // only if this artist actually HAS this genre? 
-                // It's tricky because a track has multiple artists.
-                // Simplification: Associate track with this artist node.
-                if (!artistGroups.has(a.name)) artistGroups.set(a.name, { count: 0, tracks: [] });
-                artistGroups.get(a.name)!.count++;
-                artistGroups.get(a.name)!.tracks.push(t);
+                // Only include the artist if they are relevant to this genre? 
+                // Or if they are on the track?
+                // The previous logic just added every artist of the track.
+
+                // Let's use the same logic: associate track with every artist on it.
+                if (!artistGroups.has(a.name)) artistGroups.set(a.name, { count: 0, tracks: [], trackIds: new Set() });
+
+                const ag = artistGroups.get(a.name)!;
+                if (!ag.trackIds.has(t.id)) {
+                    ag.trackIds.add(t.id);
+                    ag.count++;
+                    ag.tracks.push(t);
+                }
             });
         });
 
