@@ -5,13 +5,25 @@ import { LogOut, User, Music } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 
-export default function LoginButton({ action, variant = "simple", profileImage }: { action?: "login" | "logout", variant?: "simple" | "flip", profileImage?: string | null }) {
+export default function LoginButton({
+    action,
+    variant = "simple",
+    profileImage,
+    onExitDemo,
+    isDemo
+}: {
+    action?: "login" | "logout",
+    variant?: "simple" | "flip",
+    profileImage?: string | null,
+    onExitDemo?: () => void,
+    isDemo?: boolean
+}) {
     const { data: session } = useSession();
 
     // Determine the image source: prop > session > null
     const imageSrc = profileImage || session?.user?.image;
 
-    if (session) {
+    if (session || isDemo) {
         if (action === "login") return null;
 
         return (
@@ -21,7 +33,10 @@ export default function LoginButton({ action, variant = "simple", profileImage }
                         {variant === "simple" ? (
                             <div className="flex items-center gap-4">
                                 <button
-                                    onClick={() => signOut()}
+                                    onClick={() => {
+                                        if (isDemo && onExitDemo) onExitDemo();
+                                        else signOut();
+                                    }}
                                     className="bg-zinc-800 hover:bg-red-600 text-zinc-200 hover:text-white p-2 rounded-full shadow-lg transition-all hover:scale-105"
                                     title="Sign out"
                                 >
@@ -42,7 +57,10 @@ export default function LoginButton({ action, variant = "simple", profileImage }
 
                                     {/* Back: Logout Button */}
                                     <button
-                                        onClick={() => signOut()}
+                                        onClick={() => {
+                                            if (isDemo && onExitDemo) onExitDemo();
+                                            else signOut();
+                                        }}
                                         className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg"
                                         title="Sign out"
                                     >

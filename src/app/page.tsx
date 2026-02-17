@@ -2,12 +2,24 @@
 
 import LoginButton from "@/components/LoginButton";
 import Dashboard from "@/components/Dashboard";
+import WaitlistForm from "@/components/WaitlistForm";
 import AnimatedTitle from "@/components/AnimatedTitle";
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 
+import { DemoProvider, useDemoMode } from "@/context/DemoContext";
+
 export default function Home() {
+  return (
+    <DemoProvider>
+      <HomeContent />
+    </DemoProvider>
+  );
+}
+
+function HomeContent() {
   const { data: session } = useSession();
+  const { isDemoMode, enableDemoMode, disableDemoMode } = useDemoMode();
   const [isDetailView, setIsDetailView] = useState(false);
   const [currentViewMode, setCurrentViewMode] = useState<'CLUSTER' | 'TIMELINE'>('CLUSTER');
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -112,14 +124,16 @@ export default function Home() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, [session]);
 
+  const showContent = session || isDemoMode;
+
   return (
-    <div className={`flex flex-col bg-black font-[family-name:var(--font-geist-sans)] ${!session
+    <div className={`flex flex-col bg-black font-[family-name:var(--font-geist-sans)] ${!showContent
       ? 'h-screen overflow-hidden sm:h-auto sm:min-h-screen sm:overflow-y-auto sm:overflow-x-hidden'
       : 'min-h-screen overflow-x-hidden'
       }`}>
 
       {/* Responsive Header / Navbar - Only show when logged in */}
-      {session && (
+      {showContent && (
         <header
           ref={headerRef}
           className={`w-full flex items-center justify-between p-4 px-6 fixed transition-colors duration-500 bg-transparent border-transparent sm:pointer-events-none z-50 ${isDetailView ? 'bottom-0 pointer-events-none' : 'top-0 left-0 right-0'}`}
@@ -131,7 +145,7 @@ export default function Home() {
               : 'fixed bottom-4 right-4 z-[102] opacity-30 !pointer-events-none')
             : ''
             }`}>
-            {session ? (
+            {showContent ? (
               <AnimatedTitle
                 text="ReWrapt"
                 variant="navbar"
@@ -157,12 +171,12 @@ export default function Home() {
               // If Watermark (isDetailView), these inline styles are overridden by !important classes above or we strictly control them here
               // But we can just use the class priority if we are careful.
               // Actually, inline styles win over classes. We need to condition the inline styles.
-              opacity: isDetailView ? undefined : (session ? 1 : 0),
-              transform: isDetailView ? undefined : (session ? 'translateY(0)' : 'translateY(20px)'),
-              pointerEvents: isDetailView ? undefined : (session ? 'auto' : 'none')
+              opacity: isDetailView ? undefined : (showContent ? 1 : 0),
+              transform: isDetailView ? undefined : (showContent ? 'translateY(0)' : 'translateY(20px)'),
+              pointerEvents: isDetailView ? undefined : (showContent ? 'auto' : 'none')
             }}
           >
-            {session ? (
+            {showContent ? (
               <AnimatedTitle
                 text="ReWrapt"
                 variant="navbar"
@@ -181,12 +195,12 @@ export default function Home() {
 
             {/* 1. Simple Button (Initial) */}
             <div ref={btnSimpleRef} className="absolute inset-0 flex items-center justify-center">
-              <LoginButton action="logout" variant="simple" />
+              <LoginButton action="logout" variant="simple" onExitDemo={disableDemoMode} isDemo={isDemoMode} />
             </div>
 
             {/* 2. Flip Button (Scrolled) */}
             <div ref={btnFlipRef} className="absolute inset-0 flex items-center justify-center" style={{ opacity: 0, pointerEvents: 'none' }}>
-              <LoginButton action="logout" variant="flip" profileImage={profileImage} />
+              <LoginButton action="logout" variant="flip" profileImage={profileImage} onExitDemo={disableDemoMode} isDemo={isDemoMode} />
             </div>
 
           </div>
@@ -194,15 +208,15 @@ export default function Home() {
       )
       }
 
-      <main className={`flex-1 flex flex-col items-center p-4 gap-6 sm:p-20 text-center mt-12 sm:mt-0 transition-all duration-500 ease-in-out ${!session ? 'justify-center' : 'justify-start'}`}>
+      <main className={`flex-1 flex flex-col items-center p-4 gap-6 sm:p-20 text-center mt-12 sm:mt-0 transition-all duration-500 ease-in-out ${!showContent ? 'justify-center' : 'justify-start'}`}>
 
         {/* Hero Section (Title + Text) - Only show when NOT logged in */}
-        {!session && (
+        {!showContent && (
           <div
             ref={heroRef}
             className="sticky top-20 z-0 flex flex-col items-center gap-8 will-change-transform will-change-opacity"
           >
-            {/* Fixed-height container to prevent layout shift during animation */}
+            {/* ... title ... */}
             <div className="relative h-24 sm:h-32 w-full flex items-center justify-center">
               <div className="absolute inset-0 flex items-center justify-center">
                 <AnimatedTitle
@@ -225,23 +239,35 @@ export default function Home() {
         )}
 
         {/* Content Overlay - Higher Z-Index to scroll OVER the sticky hero */}
-        <div className="w-full flex flex-col items-center gap-6 relative z-10">
-          {!session && (
+        <div className="w-full flex flex-col items-center gap-6 relative z-10 transition-all duration-500">
+          {!showContent && (
             <div
-              className="w-full flex justify-center"
+              className="w-full flex flex-col items-center gap-4 justify-center"
               style={{
                 opacity: contentVisible ? 1 : 0,
                 transition: 'opacity 1s ease-in-out'
               }}
             >
               <LoginButton action="login" />
+
+              <button
+                onClick={enableDemoMode}
+                className="text-sm text-zinc-500 hover:text-white underline underline-offset-4 transition-colors"
+              >
+                Try Functionality Demo
+              </button>
+
+              <WaitlistForm />
             </div>
           )}
-          <DashboardWrapper
-            onDetailViewChange={setIsDetailView}
-            onViewModeChange={setCurrentViewMode}
-            onProfileImageLoaded={setProfileImage}
-          />
+
+          {showContent && (
+            <DashboardWrapper
+              onDetailViewChange={setIsDetailView}
+              onViewModeChange={setCurrentViewMode}
+              onProfileImageLoaded={setProfileImage}
+            />
+          )}
         </div>
       </main >
     </div >

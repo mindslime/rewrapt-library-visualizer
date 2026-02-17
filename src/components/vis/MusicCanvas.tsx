@@ -68,6 +68,7 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
         const cy = dimensions.height / 2;
 
         let minScale = 1;
+        let startScale = 1; // The optimal "initial" zoom level (boosted)
         let extent: [[number, number], [number, number]] = [[0, 0], [dimensions.width, dimensions.height]];
 
         if (mode === 'GLOBAL') {
@@ -82,6 +83,7 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
             // Default containerRadius is approx 0.45 * minDim, so fitScale ~= 0.66
             const fitScale = (viewportMin * 0.6) / Math.max(1, galaxyDiameter);
             minScale = Math.max(0.4, fitScale); // Absolute floor to prevent microscopic view
+            startScale = minScale;
 
             // Pan limits: Allow 50% padding around the viewport
             // Prevents losing the galaxy entirely
@@ -90,20 +92,43 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
 
         } else {
             // CLUSTER MODE: Strict "Infinite Canvas" Lock
-            // Calculate scale to FILL viewport
-            const scaleX = dimensions.width / simulationBounds.width;
-            const scaleY = dimensions.height / simulationBounds.height;
-            const fillScale = Math.max(scaleX, scaleY);
 
-            // Min Zoom = The level where content touches edges. Can't zoom out further.
-            minScale = isFinite(fillScale) && fillScale > 0 ? fillScale : 1;
+            // CALCULATED ZOOM (Iteration 27):
+            // Instead of guessing with "boosts", we calculate exactly how much space the bubbles take up.
+            // 1. Calculate total area of all bubbles (Visual Mass)
+            // Fix: Use nodesRef.current because it contains the SimulationNodes with 'radius'.
+            const totalArea = nodesRef.current.reduce((acc, node) => acc + (Math.PI * node.radius * node.radius), 0);
+
+            // 2. Estimate the side length of a square needed to hold this mass
+            // We use a tight packing (1.0) to ensure we focus on the core content.
+            const contentSide = Math.sqrt(totalArea) * 1.0;
+
+            // 3. Calculate Scale needed to fit this SQUARE into the Viewport
+            // We use the smaller dimension (minDim) to ensure we don't crop if the aspect ratios differ.
+            const minDim = Math.min(dimensions.width, dimensions.height);
+            const fillScale = minDim / contentSide;
+
+            // 4. Set Start Scale
+            // "Stronger by a little bit": We boost the mathematically perfect fit by 10%.
+            startScale = fillScale * 1.1;
+
+            // REVISION: Ensure we don't zoom in SO close that we lose context.
+            // Cap max initial zoom to avoid pixelation if few items.
+            startScale = Math.min(startScale, 4.0);
+
+            // Min Zoom = 0.9x of the "Fill" level (10% margin out).
+            // User Request: "Max zoom out... with a tiny bit extra."
+            // This allows seeing the whole cluster with a tight frame, but prevents shrinking it to a dot.
+            minScale = isFinite(fillScale) && fillScale > 0 ? fillScale * 0.9 : 1;
 
             // Constraint: Can only pan within the virtual bounds.
-            // Virtual bounds are centered at cx, cy.
-            // So [cx - virtualW/2, cy - virtualH/2] to [cx + virtualW/2, ...]
+            // REVISION: Add 50% Padding to the bounds so the user isn't hard-locked to the edges.
+            const paddingX = simulationBounds.width * 0.5;
+            const paddingY = simulationBounds.height * 0.5;
+
             extent = [
-                [cx - simulationBounds.width / 2, cy - simulationBounds.height / 2],
-                [cx + simulationBounds.width / 2, cy + simulationBounds.height / 2]
+                [cx - simulationBounds.width / 2 - paddingX, cy - simulationBounds.height / 2 - paddingY],
+                [cx + simulationBounds.width / 2 + paddingX, cy + simulationBounds.height / 2 + paddingY]
             ];
         }
 
@@ -125,9 +150,10 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
 
                 // Animate to the fill view (Scale around Center)
                 // translate(cx, cy).scale(s).translate(-cx, -cy)
+                // BUG FIX: Use startScale (boosted) for the initial view, not minScale (unboosted floor).
                 const initialTransform = d3.zoomIdentity
                     .translate(cx, cy)
-                    .scale(minScale)
+                    .scale(Math.max(minScale, startScale)) // Ensure we don't go below min (redundant but safe)
                     .translate(-cx, -cy);
 
                 selection.call(zoom.transform as any, initialTransform);

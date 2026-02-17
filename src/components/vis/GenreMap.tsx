@@ -8,9 +8,10 @@ import { ArrowLeft, X } from "lucide-react";
 interface GenreMapProps {
     data: GenreNode[];
     contextType?: 'library' | 'playlist';
+    onColorChange?: (color: string | null) => void;
 }
 
-export default function GenreMap({ data, contextType = 'library' }: GenreMapProps) {
+export default function GenreMap({ data, contextType = 'library', onColorChange }: GenreMapProps) {
     const [viewMode, setViewMode] = useState<'GLOBAL' | 'CLUSTER'>('GLOBAL');
     const [activeData, setActiveData] = useState<GenreNode[]>(data);
     const [selectedGenre, setSelectedGenre] = useState<GenreNode | null>(null);
@@ -30,10 +31,12 @@ export default function GenreMap({ data, contextType = 'library' }: GenreMapProp
                 setSelectedGenre(node);
                 setActiveData(node.children);
                 setViewMode('CLUSTER');
+                onColorChange?.(node.color || null);
             }
         } else if (viewMode === 'CLUSTER') {
             // Clicked an Artist -> Show Detail Modal
             setSelectedArtist(node);
+            onColorChange?.(node.color || null);
         }
     }, [viewMode]);
 
@@ -42,6 +45,7 @@ export default function GenreMap({ data, contextType = 'library' }: GenreMapProp
             setViewMode('GLOBAL');
             setActiveData(data); // Restore global
             setSelectedGenre(null);
+            onColorChange?.(null);
         }
     };
 
@@ -114,7 +118,11 @@ export default function GenreMap({ data, contextType = 'library' }: GenreMapProp
             {/* Song Detail Modal (Artist) */}
             {selectedArtist && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
-                    onClick={() => setSelectedArtist(null)}>
+                    onClick={() => {
+                        setSelectedArtist(null);
+                        // Revert to Genre Color
+                        onColorChange?.(selectedGenre?.color || null);
+                    }}>
                     <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-3xl w-full max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
                         onClick={(e) => e.stopPropagation()}>
 
@@ -127,7 +135,10 @@ export default function GenreMap({ data, contextType = 'library' }: GenreMapProp
                                 </p>
                             </div>
                             <button
-                                onClick={() => setSelectedArtist(null)}
+                                onClick={() => {
+                                    setSelectedArtist(null);
+                                    onColorChange?.(selectedGenre?.color || null);
+                                }}
                                 className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
                             >
                                 <X className="w-6 h-6 text-zinc-400" />

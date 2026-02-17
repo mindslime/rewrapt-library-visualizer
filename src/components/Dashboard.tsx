@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useState, useRef } from "react";
-import { Palette, ChevronLeft, Music, Users, Library, Activity, Circle, List, LayoutGrid } from "lucide-react";
+import { Palette, ChevronLeft, Music, Users, User, Library, Activity, Circle, List, LayoutGrid } from "lucide-react";
 import { motion } from "framer-motion";
 import GenreMap from "./vis/GenreMap";
 import TimelineVis from "./vis/TimelineVis";
@@ -11,6 +11,8 @@ import { fetchPlaylistTracks, fetchArtists, fetchLikedSongs, fetchUserPlaylists 
 import { getCachedTracks, saveTracksToCache, checkTrackExists, getCachedArtists, saveArtistsToCache } from "@/lib/storage";
 import { GenreNode, SpotifyPlaylist, SpotifyTrack, SpotifyArtist } from "@/types/spotify";
 import { transformTracksToNodes } from "@/utils/spotifyTransform";
+import { useDemoMode } from "@/context/DemoContext";
+import { DEMO_PROFILE, DEMO_PLAYLISTS, DEMO_TRACKS, DEMO_ARTISTS } from "@/data/demo-data";
 
 interface DashboardProps {
     onDetailViewChange?: (isOpen: boolean) => void;
@@ -20,11 +22,13 @@ interface DashboardProps {
 
 export default function Dashboard({ onDetailViewChange, onViewModeChange, onProfileImageLoaded }: DashboardProps) {
     const { data: session } = useSession();
+    const { isDemoMode } = useDemoMode();
     const [profile, setProfile] = useState<any>(null);
     const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
 
     // View State
     const [viewTitle, setViewTitle] = useState<string | null>(null);
+    const [navColor, setNavColor] = useState<string | null>(null);
 
     // Sync view state with parent
     useEffect(() => {
@@ -69,6 +73,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
         setLoading(true);
         setViewTitle(sourceName);
+        setNavColor(null);
         setGenreData([]);
         setAllTracks([]);
         setArtistDetails(new Map());
@@ -144,7 +149,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
     }
 
     const handlePlaylistClick = async (playlist: SpotifyPlaylist) => {
-        if (!session?.accessToken) return;
+        if (!session?.accessToken && !isDemoMode) return;
 
         cancelOperations();
         const abortController = new AbortController();
@@ -158,13 +163,31 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
         setProgress({ current: 0, total: playlist.tracks.total });
 
         try {
-            const tracks = await fetchPlaylistTracks(session.accessToken, playlist.id, (current, total) => {
-                if (!signal.aborted) setProgress({ current, total });
-            }, signal);
+            let tracks: SpotifyTrack[] = [];
 
-            if (signal.aborted) return;
+            if (isDemoMode) {
+                // Simulate network delay for effect
+                await new Promise(resolve => setTimeout(resolve, 800));
 
-            await processTracks(tracks, playlist.name, signal);
+                // For demo, we just return the same demo tracks for any playlist
+                // In a real app we might filter or have different sets
+                tracks = DEMO_TRACKS;
+
+                // We also need to mock the artists map for the transformer
+                const artistMap = new Map(DEMO_ARTISTS.map(a => [a.id, a]));
+
+                setAllTracks(tracks);
+                setArtistDetails(artistMap);
+                const nodes = transformTracksToNodes(tracks, artistMap);
+                setGenreData(nodes);
+            } else {
+                tracks = await fetchPlaylistTracks(session!.accessToken!, playlist.id, (current, total) => {
+                    if (!signal.aborted) setProgress({ current, total });
+                }, signal);
+
+                if (signal.aborted) return;
+                await processTracks(tracks, playlist.name, signal);
+            }
         } catch (e: any) {
             if (e.message === "Aborted" || e.name === "AbortError") return;
             console.error(e);
@@ -175,7 +198,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
     };
 
     const handleLibraryClick = async () => {
-        if (!session?.accessToken) return;
+        if (!session?.accessToken && !isDemoMode) return;
 
         cancelOperations();
         const abortController = new AbortController();
@@ -189,45 +212,59 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
         try {
             if (signal.aborted) return;
-            setLoadingStatus("Checking cache...");
-            const cachedTracks = await getCachedTracks();
 
-            if (cachedTracks.length > 0) {
-                if (!signal.aborted) {
-                    await processTracks(cachedTracks, "Your Library", signal);
-                }
+            if (isDemoMode) {
+                setLoadingStatus("Loading demo library...");
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                const tracks = DEMO_TRACKS;
+                const artistMap = new Map(DEMO_ARTISTS.map(a => [a.id, a]));
+
+                setAllTracks(tracks);
+                setArtistDetails(artistMap);
+                const nodes = transformTracksToNodes(tracks, artistMap);
+                setGenreData(nodes);
             } else {
-                if (!signal.aborted) {
-                    setLoadingStatus("Fetching your entire Liked Songs library...");
-                    setProgress({ current: 0, total: 100 });
-                }
-            }
+                setLoadingStatus("Checking cache...");
+                const cachedTracks = await getCachedTracks();
 
-            if (signal.aborted) return;
-
-            const newTracks = await fetchLikedSongs(
-                session.accessToken,
-                (current, total) => {
-                    if (cachedTracks.length === 0 && !signal.aborted) {
-                        setProgress({ current, total });
+                if (cachedTracks.length > 0) {
+                    if (!signal.aborted) {
+                        await processTracks(cachedTracks, "Your Library", signal);
                     }
-                },
-                checkTrackExists,
-                signal
-            );
+                } else {
+                    if (!signal.aborted) {
+                        setLoadingStatus("Fetching your entire Liked Songs library...");
+                        setProgress({ current: 0, total: 100 });
+                    }
+                }
 
-            if (signal.aborted) return;
+                if (signal.aborted) return;
 
-            if (newTracks.length > 0) {
-                console.log(`Found ${newTracks.length} new tracks!`);
-                await saveTracksToCache(newTracks);
+                const newTracks = await fetchLikedSongs(
+                    session!.accessToken!,
+                    (current, total) => {
+                        if (cachedTracks.length === 0 && !signal.aborted) {
+                            setProgress({ current, total });
+                        }
+                    },
+                    checkTrackExists,
+                    signal
+                );
 
-                const allTracks = [...newTracks, ...cachedTracks];
-                const uniqueTracks = Array.from(new Map(allTracks.map(t => [t.id, t])).values());
+                if (signal.aborted) return;
 
-                await processTracks(uniqueTracks, "Your Library", signal);
-            } else {
-                console.log("Library up to date.");
+                if (newTracks.length > 0) {
+                    console.log(`Found ${newTracks.length} new tracks!`);
+                    await saveTracksToCache(newTracks);
+
+                    const allTracks = [...newTracks, ...cachedTracks];
+                    const uniqueTracks = Array.from(new Map(allTracks.map(t => [t.id, t])).values());
+
+                    await processTracks(uniqueTracks, "Your Library", signal);
+                } else {
+                    console.log("Library up to date.");
+                }
             }
 
         } catch (e: any) {
@@ -254,7 +291,13 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
     }, []);
 
     useEffect(() => {
-        if (session?.accessToken) {
+        if (isDemoMode) {
+            setProfile(DEMO_PROFILE);
+            setPlaylists(DEMO_PLAYLISTS);
+            if (DEMO_PROFILE.images[0]?.url) {
+                onProfileImageLoaded?.(DEMO_PROFILE.images[0].url);
+            }
+        } else if (session?.accessToken) {
             fetch("https://api.spotify.com/v1/me", {
                 headers: { Authorization: `Bearer ${session.accessToken}` },
             })
@@ -268,62 +311,91 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
             fetchUserPlaylists(session.accessToken).then(setPlaylists);
         }
-    }, [session]);
+    }, [session, isDemoMode]);
 
 
-    if (!session) return null;
+    if (!session && !isDemoMode) return null;
+
+    // Helper to generate safe gradient
+    const getGradientStyle = (color: string | null) => {
+        if (!color) return `linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%)`;
+
+        // If hex (e.g. #RRGGBB)
+        if (color.startsWith('#')) {
+            return `linear-gradient(to bottom, ${color}CC 0%, ${color}00 100%)`;
+        }
+
+        // If rgb/rgba (e.g. rgb(255, 0, 0))
+        const match = color.match(/(\d+),\s*(\d+),\s*(\d+)/);
+        if (match) {
+            const [_, r, g, b] = match;
+            return `linear-gradient(to bottom, rgba(${r}, ${g}, ${b}, 0.8) 0%, rgba(${r}, ${g}, ${b}, 0) 100%)`;
+        }
+
+        return `linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%)`;
+    };
 
     // --- RENDER: Detailed View (Genre Map) ---
     if (viewTitle) {
         return (
             <div className="fixed inset-0 z-[100] bg-black flex flex-col">
-                <header className="flex items-center justify-between px-4 py-2 md:px-6 md:py-4 bg-gradient-to-b from-[#121212]/95 to-[#121212]/0 backdrop-blur-md absolute top-0 left-0 right-0 z-[120]">
-                    <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-                        <button
-                            onClick={() => {
-                                cancelOperations();
-                                setViewTitle(null);
-                                setIsLibraryView(false);
-                            }}
-                            className="p-1.5 md:p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0"
-                        >
-                            <ChevronLeft className="w-5 h-5 md:w-6 md:h-6" />
-                        </button>
-                        <div className="min-w-0">
-                            <h2 className="text-sm md:text-xl font-bold truncate">{viewTitle}</h2>
-                            <p className="text-zinc-400 text-[10px] md:text-xs truncate hidden md:block">
-                                {!isLibraryView && "Playlist Analysis"}
-                            </p>
+                <header className="absolute top-0 left-0 right-0 z-[120]">
+                    <div
+                        className="absolute top-0 left-0 right-0 h-32 backdrop-blur-xl pointer-events-none transition-[background] duration-500 ease-in-out"
+                        style={{
+                            background: getGradientStyle(navColor),
+                            maskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)',
+                            WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)'
+                        }}
+                    />
+                    <div className="relative z-10 flex items-center justify-between px-4 py-2 md:px-6 md:py-4">
+                        <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
+                            <button
+                                onClick={() => {
+                                    cancelOperations();
+                                    setViewTitle(null);
+                                    setNavColor(null);
+                                    setIsLibraryView(false);
+                                }}
+                                className="p-1.5 md:p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0"
+                            >
+                                <ChevronLeft className="w-5 h-5 md:w-6 md:h-6" />
+                            </button>
+                            <div className="min-w-0">
+                                <h2 className="text-sm md:text-xl font-bold truncate">{viewTitle}</h2>
+                                <p className="text-zinc-400 text-[10px] md:text-xs truncate hidden md:block">
+                                    {!isLibraryView && "Playlist Analysis"}
+                                </p>
+                            </div>
                         </div>
-                    </div>
 
-                    {/* View Switcher */}
-                    <div className="flex bg-[#181818]/80 backdrop-blur-md p-1 rounded-lg relative z-[101]">
-                        <button
-                            onClick={() => setViewMode('CLUSTER')}
-                            className={`flex items-center justify-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all cursor-pointer ${viewMode === 'CLUSTER' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"
-                                }`}
-                        >
-                            <Circle className="w-4 h-4" />
-                            <span className="hidden md:inline">Clusters</span>
-                        </button>
+                        {/* View Switcher */}
+                        <div className="flex bg-[#181818]/80 backdrop-blur-md p-1 rounded-lg relative z-[101]">
+                            <button
+                                onClick={() => setViewMode('CLUSTER')}
+                                className={`flex items-center justify-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all cursor-pointer ${viewMode === 'CLUSTER' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                                    }`}
+                            >
+                                <Circle className="w-4 h-4" />
+                                <span className="hidden md:inline">Clusters</span>
+                            </button>
 
-                        <button
-                            onClick={() => setViewMode('TIMELINE')}
-                            className={`flex items-center justify-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all cursor-pointer ${viewMode === 'TIMELINE' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"
-                                }`}
-                        >
-                            <Activity className="w-4 h-4" />
-                            {/* Desktop: Always Show. Mobile: Hidden (Icon only) */}
-                            <span className="hidden md:inline">
-                                Timeline
-                            </span>
-                        </button>
+                            <button
+                                onClick={() => setViewMode('TIMELINE')}
+                                className={`flex items-center justify-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all cursor-pointer ${viewMode === 'TIMELINE' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                                    }`}
+                            >
+                                <Activity className="w-4 h-4" />
+                                {/* Desktop: Always Show. Mobile: Hidden (Icon only) */}
+                                <span className="hidden md:inline">
+                                    Timeline
+                                </span>
+                            </button>
+                        </div>
                     </div>
                 </header>
 
-                {/* Spacer for fixed header */}
-                <div className="h-12 md:h-20 flex-shrink-0 pointer-events-none" />
+
 
                 <div className="flex-1 overflow-hidden relative bg-zinc-950">
                     {loading ? (
@@ -349,7 +421,13 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                         </div>
                     ) : (
                         <>
-                            {viewMode === 'CLUSTER' && <GenreMap data={genreData} contextType={isLibraryView ? 'library' : 'playlist'} />}
+                            {viewMode === 'CLUSTER' && (
+                                <GenreMap
+                                    data={genreData}
+                                    contextType={isLibraryView ? 'library' : 'playlist'}
+                                    onColorChange={setNavColor}
+                                />
+                            )}
                             {viewMode === 'TIMELINE' && <TimelineVis tracks={allTracks} artistMap={artistDetails} />}
                         </>
                     )}
@@ -372,14 +450,23 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                     className="flex flex-col md:flex-row items-center gap-8"
                 >
                     {/* Profile Image - Left */}
-                    {profile?.images?.[0]?.url && (
-                        <motion.img
-                            layout
-                            src={profile.images[0].url}
-                            className="w-32 h-32 rounded-full border-4 border-zinc-700 object-cover flex-shrink-0 relative z-10"
-                            alt="Profile"
-                        />
-                    )}
+                    <div className="relative">
+                        {profile?.images?.[0]?.url ? (
+                            <motion.img
+                                layout
+                                src={profile.images[0].url}
+                                className="w-32 h-32 rounded-full border-4 border-zinc-700 object-cover flex-shrink-0 relative z-10 shadow-xl"
+                                alt="Profile"
+                            />
+                        ) : (
+                            <motion.div
+                                layout
+                                className="w-32 h-32 rounded-full border-4 border-zinc-700 bg-zinc-800 flex items-center justify-center flex-shrink-0 relative z-10 shadow-xl"
+                            >
+                                <User className="w-16 h-16 text-zinc-500" />
+                            </motion.div>
+                        )}
+                    </div>
 
                     {/* Text - Center */}
                     <motion.div

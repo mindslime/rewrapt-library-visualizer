@@ -239,14 +239,10 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             }, 0);
 
             // Packing Factor: Circles don't pack perfectly.
-            // Iteration 21: Relax padding for small clusters (large bubbles) to avoid edge collision
-            // Small clusters (<20): 1.25x (More room for big bubbles)
-            // Large clusters: 1.1x (Standard tight fit)
-            // Iteration 22: ZOOM OUT (User Request)
-            // We drastically increase packing factor to 1.5x - 1.8x.
-            // This makes the "world" bigger, so the auto-zoom zooms OUT.
-            // Result: Bubbles look smaller, and have huge margins to float in without hitting edges.
-            const packingFactor = newNodes.length < 20 ? 1.8 : 1.5;
+            // Iteration 23: Tighter packing for large clusters to fix "too zoomed out" issue.
+            // Small clusters (<20): 1.8x (Lots of breathing room)
+            // Large clusters (>=20): 1.2x (Tighter fit so they fill the screen)
+            const packingFactor = newNodes.length < 20 ? 1.8 : 1.2;
             const requiredArea = totalArea * packingFactor;
 
             // Aspect Ratio Lock (Screen Shape)
@@ -257,10 +253,13 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             let vW = vH * aspectRatio;
 
             // Ensure we never shrink smaller than the actual viewport
-            if (vW < width) {
-                vW = width;
-                vH = height;
-            }
+            // REVISION: We REMOVE this clamp for CLUSTER mode.
+            // If the cluster is physically small (e.g. few songs), we WANT the bounds to be small
+            // so the camera zooms in to fill the screen.
+            // if (vW < width) {
+            //     vW = width;
+            //     vH = height;
+            // }
 
             virtualWidth = vW;
             virtualHeight = vH;
@@ -277,7 +276,15 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
         // Cluster = 10 (Avoid overlap), Global = 4 (Tight packing for pillars)
         // Iteration 9: Mobile Optimization (Cluster = 5 for tighter packing)
         // Iteration 11: Max Density (Cluster = 2 for tightest packing)
-        let clusterPadding = mode === 'CLUSTER' ? 2 : 4;
+        // Iteration 11: Max Density (Cluster = 2 for tightest packing)
+        // REVISION (Iteration 31): "Hard Spacing" Strategy.
+        // We mute repulsion (Charge) and use Collision Padding to enforce uniform spacing.
+        // Desktop: 15px, Mobile: 10px (slightly tighter for small screens)
+        let clusterPadding = 4;
+        if (mode === 'CLUSTER') {
+            // REVISION (Iteration 32): Minimal Space (2px)
+            clusterPadding = 2;
+        }
 
         // Iteration 10: Dynamic Gravity for Infinite Canvas
         // If we have a large cluster (>25) and are in Cluster mode,
@@ -288,7 +295,23 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
         // Iteration 16: Max Screen Fill - Disable gravity for ALL clusters to let them expand to edges
         // Iteration 19: Gravity Restored (0.15) to pull bubbles into a cohesive mass.
         // We rely on Tight Bounds + Auto-Zoom to fill the screen, rather than Repulsion.
-        const centerStrength = mode === 'GLOBAL' ? 0.1 : 0.15;
+        // REVISION (Iteration 28): User requested DYNAMIC centering based on cluster size.
+        // - Small clusters (<10) need pull to stay cohesive (e.g. 0.05 - 0.1)
+        // - Large clusters (>50) need to float freely (e.g. 0.015)
+        // Formula: 0.15 / sqrt(count)
+        // 1 node -> 0.15
+        // 10 nodes -> ~0.047
+        // 50 nodes -> ~0.021
+        // 100 nodes -> ~0.015 (Matches user's sweet spot)
+        let dynamicGravity = 0.1;
+        if (mode === 'CLUSTER') {
+            const count = Math.max(1, newNodes.length);
+            dynamicGravity = 0.15 / Math.sqrt(count);
+            // Clamp just in case
+            dynamicGravity = Math.max(0.001, Math.min(0.1, dynamicGravity));
+        }
+
+        const centerStrength = mode === 'GLOBAL' ? 0.1 : dynamicGravity;
 
         simulationRef.current = d3.forceSimulation<SimulationNode>(newNodes)
             .alpha(1)
@@ -335,8 +358,44 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
                         // Instead of hard resetting position (which causes jitter when fighting collision forces),
                         // we apply a strong velocity correction ("Restoring Force") when out of bounds.
                         const r = node.currentRadius;
-                        const wallStiffness = 0.5; // How strongly we push back (0.0 - 1.0)
+                        const wallStiffness = 0.5; // How strongly we push back (0.0 - 1.0) when OVER the line
 
+                        // EDGE REPULSION (Iteration 30):
+                        // User requested "Outside the box" thinking: Push nodes away from edges to force them to center
+                        // without using a center point gravity (which bunches them).
+                        // We define a "Buffer Zone" (e.g. 15% of dimension) near the walls.
+                        // If a node is in this zone, it gets a "wind" blowing it towards the center.
+                        const bufferW = virtualWidth * 0.15;
+                        const bufferH = virtualHeight * 0.15;
+                        const repulsionStrength = 0.8; // Strength of the "wind"
+
+                        // Left Wall Repulsion
+                        if (node.x < minX + bufferW) {
+                            const dist = (minX + bufferW) - node.x; // How deep in the zone
+                            const strength = (dist / bufferW) * repulsionStrength;
+                            node.vx = (node.vx || 0) + strength;
+                        }
+                        // Right Wall Repulsion
+                        else if (node.x > maxX - bufferW) {
+                            const dist = node.x - (maxX - bufferW);
+                            const strength = (dist / bufferW) * repulsionStrength;
+                            node.vx = (node.vx || 0) - strength;
+                        }
+
+                        // Top Wall Repulsion
+                        if (node.y < minY + bufferH) {
+                            const dist = (minY + bufferH) - node.y;
+                            const strength = (dist / bufferH) * repulsionStrength;
+                            node.vy = (node.vy || 0) + strength;
+                        }
+                        // Bottom Wall Repulsion
+                        else if (node.y > maxY - bufferH) {
+                            const dist = node.y - (maxY - bufferH);
+                            const strength = (dist / bufferH) * repulsionStrength;
+                            node.vy = (node.vy || 0) - strength;
+                        }
+
+                        // --- HARD WALLS (Keep existing logic as backup for overshoot) ---
                         // Left
                         if (node.x < minX + r) {
                             const penetration = (minX + r) - node.x;
@@ -390,10 +449,10 @@ export function useMusicSimulation({ data, width, height, mode }: UseMusicSimula
             });
 
         if (mode === 'CLUSTER') {
-            if (mode === 'CLUSTER') {
-                // Standard Repulsion (1.0x) - let Gravity do the work of cohesion
-                simulationRef.current.force("charge", d3.forceManyBody().strength(d => -((d as any).radius) * 1.0));
-            }
+            // REVISION (Iteration 31): Hard Spacing.
+            // We mute the variable repulsion (which causes uneven gaps) and rely on the fixed Collision Padding.
+            // We keep a VERY faint charge (-1.0) just to prevent perfect overlap glitches, but it won't push them apart.
+            simulationRef.current.force("charge", d3.forceManyBody().strength(-1.0 * baseUnit));
         }
 
         simulationRef.current.restart();

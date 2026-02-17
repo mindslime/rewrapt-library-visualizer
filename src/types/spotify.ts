@@ -63,6 +63,7 @@ export interface GenreNode {
     y?: number;
     vx?: number;
     vy?: number;
+    color?: string;
 }
 
 export interface SpotifyAudioFeatures {
