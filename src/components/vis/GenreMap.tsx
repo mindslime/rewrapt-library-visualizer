@@ -173,31 +173,31 @@ const GenreMap = forwardRef<GenreMapRef, GenreMapProps>(({ data, contextType = '
                                 <thead className="bg-zinc-950/50 sticky top-0 backdrop-blur-sm z-10">
                                     <tr>
                                         <th
-                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors"
+                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors whitespace-nowrap"
                                             onClick={() => handleSort('name')}
                                         >
                                             Title <SortIcon column="name" />
                                         </th>
                                         <th
-                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors"
+                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors whitespace-nowrap"
                                             onClick={() => handleSort('artist')}
                                         >
                                             Artist <SortIcon column="artist" />
                                         </th>
                                         <th
-                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors"
+                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors whitespace-nowrap"
                                             onClick={() => handleSort('album')}
                                         >
                                             Album <SortIcon column="album" />
                                         </th>
                                         <th
-                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors"
+                                            className="p-4 font-semibold text-zinc-500 cursor-pointer hover:text-white transition-colors whitespace-nowrap"
                                             onClick={() => handleSort('added_at')}
                                         >
                                             Added <SortIcon column="added_at" />
                                         </th>
                                         <th
-                                            className="p-4 font-semibold text-zinc-500 text-right cursor-pointer hover:text-white transition-colors"
+                                            className="p-4 font-semibold text-zinc-500 text-right cursor-pointer hover:text-white transition-colors whitespace-nowrap"
                                             onClick={() => handleSort('duration_ms')}
                                         >
                                             Duration <SortIcon column="duration_ms" />
