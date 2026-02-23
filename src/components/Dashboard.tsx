@@ -375,7 +375,15 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                         <div className="flex items-center gap-2 md:gap-4 overflow-hidden z-20">
                             <button
                                 onClick={() => {
-                                    if (drillDownTitle) {
+                                    if (viewMode === 'TIMELINE') {
+                                        // Exit timeline: go back to main view
+                                        cancelOperations();
+                                        setViewMode('CLUSTER');
+                                        setDrillDownTitle(null);
+                                        setNavColor(null);
+                                        setViewTitle(null);
+                                        setIsLibraryView(false);
+                                    } else if (drillDownTitle) {
                                         // Go back from drill-down
                                         genreMapRef.current?.goBack();
                                     } else {
@@ -423,7 +431,14 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                             </button>
 
                             <button
-                                onClick={() => setViewMode('TIMELINE')}
+                                onClick={() => {
+                                    // When switching to timeline, reset drill-down state
+                                    if (drillDownTitle) {
+                                        setDrillDownTitle(null);
+                                        setNavColor(null);
+                                    }
+                                    setViewMode('TIMELINE');
+                                }}
                                 className={`flex items-center justify-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all cursor-pointer ${viewMode === 'TIMELINE' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"
                                     }`}
                             >
