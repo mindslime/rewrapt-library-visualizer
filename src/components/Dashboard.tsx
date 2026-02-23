@@ -4,7 +4,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState, useRef } from "react";
 import { Palette, ChevronLeft, Music, Users, User, Library, Activity, Circle, List, LayoutGrid } from "lucide-react";
 import { motion } from "framer-motion";
-import GenreMap from "./vis/GenreMap";
+import GenreMap, { GenreMapRef } from "./vis/GenreMap";
 import TimelineVis from "./vis/TimelineVis";
 import PlaylistSkeleton from "./PlaylistSkeleton";
 import { fetchPlaylistTracks, fetchArtists, fetchLikedSongs, fetchUserPlaylists } from "@/lib/spotify-client";
@@ -29,6 +29,11 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
     // View State
     const [viewTitle, setViewTitle] = useState<string | null>(null);
     const [navColor, setNavColor] = useState<string | null>(null);
+    const [isTitleHovered, setIsTitleHovered] = useState(false);
+
+    // Drill-down State
+    const [drillDownTitle, setDrillDownTitle] = useState<string | null>(null);
+    const genreMapRef = useRef<GenreMapRef>(null);
 
     // Sync view state with parent
     useEffect(() => {
@@ -207,7 +212,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
         setIsLibraryView(true);
         setLoading(true);
-        setViewTitle("Your Library");
+        setViewTitle("Your Playlists");
         setProgress(null);
 
         try {
@@ -230,7 +235,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
                 if (cachedTracks.length > 0) {
                     if (!signal.aborted) {
-                        await processTracks(cachedTracks, "Your Library", signal);
+                        await processTracks(cachedTracks, "Your Playlists", signal);
                     }
                 } else {
                     if (!signal.aborted) {
@@ -261,7 +266,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                     const allTracks = [...newTracks, ...cachedTracks];
                     const uniqueTracks = Array.from(new Map(allTracks.map(t => [t.id, t])).values());
 
-                    await processTracks(uniqueTracks, "Your Library", signal);
+                    await processTracks(uniqueTracks, "Your Playlists", signal);
                 } else {
                     console.log("Library up to date.");
                 }
@@ -318,21 +323,22 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
     // Helper to generate safe gradient
     const getGradientStyle = (color: string | null) => {
-        if (!color) return `linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%)`;
+        if (!color) return `linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)`;
 
         // If hex (e.g. #RRGGBB)
         if (color.startsWith('#')) {
-            return `linear-gradient(to bottom, ${color}CC 0%, ${color}00 100%)`;
+            // Reduced opacity from CC (80%) to 99 (60%) for smoother blend
+            return `linear-gradient(to bottom, ${color}99 0%, ${color}00 100%)`;
         }
 
         // If rgb/rgba (e.g. rgb(255, 0, 0))
         const match = color.match(/(\d+),\s*(\d+),\s*(\d+)/);
         if (match) {
             const [_, r, g, b] = match;
-            return `linear-gradient(to bottom, rgba(${r}, ${g}, ${b}, 0.8) 0%, rgba(${r}, ${g}, ${b}, 0) 100%)`;
+            return `linear-gradient(to bottom, rgba(${r}, ${g}, ${b}, 0.6) 0%, rgba(${r}, ${g}, ${b}, 0) 100%)`;
         }
 
-        return `linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%)`;
+        return `linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)`;
     };
 
     // --- RENDER: Detailed View (Genre Map) ---
@@ -340,34 +346,70 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
         return (
             <div className="fixed inset-0 z-[100] bg-black flex flex-col">
                 <header className="absolute top-0 left-0 right-0 z-[120]">
-                    <div
-                        className="absolute top-0 left-0 right-0 h-32 backdrop-blur-xl pointer-events-none transition-[background] duration-500 ease-in-out"
+                    <motion.div
+                        key={drillDownTitle || "header-bg"}
+                        initial={drillDownTitle ? { height: "100vh", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, opacity: 1 } : { height: "8rem", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, opacity: 1 }}
+                        animate={{
+                            height: "8rem",
+                            // "Liquid" retraction: Curve the bottom edge as it goes up
+                            borderBottomLeftRadius: ["0%", "50%", "0%"],
+                            borderBottomRightRadius: ["0%", "50%", "0%"],
+                            opacity: 1
+                        }}
+                        transition={{
+                            duration: 1.0,
+                            times: [0, 0.6, 1], // Sync the curve with the movement
+                            ease: [0.22, 1, 0.36, 1] // Custom cubic-bezier for "snappy ending"
+                        }}
+                        className="absolute top-0 left-0 right-0 backdrop-blur-xl pointer-events-none"
                         style={{
                             background: getGradientStyle(navColor),
-                            maskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)',
-                            WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 40%, transparent 100%)'
+                            // We keep the mask but it stretches with height, creating a nice "lifting fog" effect
+                            maskImage: 'linear-gradient(to bottom, black 0%, transparent 100%)',
+                            WebkitMaskImage: 'linear-gradient(to bottom, black 0%, transparent 100%)'
                         }}
                     />
                     <div className="relative z-10 flex items-center justify-between px-4 py-2 md:px-6 md:py-4">
-                        <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
+
+                        {/* LEFT: Unified Header (Galaxy & Drill-down) */}
+                        <div className="flex items-center gap-2 md:gap-4 overflow-hidden z-20">
                             <button
                                 onClick={() => {
-                                    cancelOperations();
-                                    setViewTitle(null);
-                                    setNavColor(null);
-                                    setIsLibraryView(false);
+                                    if (drillDownTitle) {
+                                        // Go back from drill-down
+                                        genreMapRef.current?.goBack();
+                                    } else {
+                                        // Exit main view
+                                        cancelOperations();
+                                        setViewTitle(null);
+                                        setNavColor(null);
+                                        setIsLibraryView(false);
+                                    }
                                 }}
-                                className="p-1.5 md:p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0"
+                                className="p-1.5 md:p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0 group relative"
+                                title={drillDownTitle ? "Return to Genres" : "Go Back"}
                             >
                                 <ChevronLeft className="w-5 h-5 md:w-6 md:h-6" />
                             </button>
                             <div className="min-w-0">
-                                <h2 className="text-sm md:text-xl font-bold truncate">{viewTitle}</h2>
-                                <p className="text-zinc-400 text-[10px] md:text-xs truncate hidden md:block">
-                                    {!isLibraryView && "Playlist Analysis"}
-                                </p>
+                                <h2 className="text-sm md:text-xl font-bold truncate">
+                                    {drillDownTitle ? "Genre View" : viewTitle}
+                                </h2>
+
                             </div>
                         </div>
+
+                        {/* CENTER: Drill-down Title */}
+                        {drillDownTitle && (
+                            <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-20">
+                                <h2 className="text-lg md:text-xl font-bold text-white shadow-sm">
+                                    {drillDownTitle}
+                                </h2>
+                            </div>
+                        )}
+
+                        {/* Spacer to push View Switcher to the right */}
+                        <div className="flex-1" />
 
                         {/* View Switcher */}
                         <div className="flex bg-[#181818]/80 backdrop-blur-md p-1 rounded-lg relative z-[101]">
@@ -423,9 +465,12 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                         <>
                             {viewMode === 'CLUSTER' && (
                                 <GenreMap
+                                    ref={genreMapRef}
                                     data={genreData}
                                     contextType={isLibraryView ? 'library' : 'playlist'}
                                     onColorChange={setNavColor}
+                                    onDrillDown={setDrillDownTitle}
+                                    onBackToGalaxy={() => setDrillDownTitle(null)}
                                 />
                             )}
                             {viewMode === 'TIMELINE' && <TimelineVis tracks={allTracks} artistMap={artistDetails} />}

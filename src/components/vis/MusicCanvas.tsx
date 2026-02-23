@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import * as d3 from 'd3';
 import { useMusicSimulation, SimulationNode } from '@/hooks/useMusicSimulation';
 import { GenreNode } from '@/types/spotify';
 import { PILLARS, PILLAR_COORDINATES } from '@/utils/spotifyTransform';
+
+export interface MusicCanvasRef {
+    zoomToNode: (node: SimulationNode, duration?: number) => Promise<void>;
+}
 
 interface MusicCanvasProps {
     nodes: GenreNode[];
     onNodeClick?: (node: GenreNode) => void;
     onBackgroundClick?: () => void;
     mode?: 'GLOBAL' | 'CLUSTER';
+    enableEntryTransition?: boolean;
 }
 
-export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mode = 'GLOBAL' }: MusicCanvasProps) {
+const MusicCanvas = forwardRef<MusicCanvasRef, MusicCanvasProps>(({ nodes, onNodeClick, onBackgroundClick, mode = 'GLOBAL', enableEntryTransition = false }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0, dpr: 1 });
@@ -22,6 +27,55 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
     const transformRef = useRef(d3.zoomIdentity); // { k, x, y }
     const savedGlobalTransform = useRef(d3.zoomIdentity);
     const prevMode = useRef(mode);
+
+    // D3 Refs for Imperative Zoom
+    const zoomBehaviorRef = useRef<d3.ZoomBehavior<Element, unknown> | null>(null);
+    const selectionRef = useRef<d3.Selection<HTMLCanvasElement, unknown, null, undefined> | null>(null);
+
+    // --- IMPERATIVE API ---
+    useImperativeHandle(ref, () => ({
+        zoomToNode: async (node: SimulationNode, duration = 750) => {
+            if (!selectionRef.current || !zoomBehaviorRef.current) return;
+
+            const width = dimensions.width;
+            const height = dimensions.height;
+
+            // Target Scale: Fill ~60% of screen with the bubble diameter
+            // node.radius is visual radius.
+            // At scale 1, diameter = node.radius * 2.
+            // We want (node.radius * 2 * k) = minDim * 0.6
+            // k = (minDim * 0.6) / (node.radius * 2)
+            const minDim = Math.min(width, height);
+
+            // FILL FACTOR: 1.5x (150% coverage) to ensure we are "inside" the bubble color
+            // Use maximum of 1 to prevent invalid math
+            const safeRadius = Math.max(1, node.radius);
+            const targetScale = (minDim * 1.5) / (safeRadius * 2);
+
+            // UNLOCK ZOOM LIMITS:
+            // Standard limit is 8x. Small bubbles need 50x+ to fill screen.
+            // We temporarily boost the limit on the behavior instance.
+            if (zoomBehaviorRef.current) {
+                zoomBehaviorRef.current.scaleExtent([0.1, Math.max(100, targetScale * 1.2)]);
+            }
+
+            // Center the node
+            // translate(width/2, height/2).scale(k).translate(-node.x, -node.y)
+            const transform = d3.zoomIdentity
+                .translate(width / 2, height / 2)
+                .scale(targetScale)
+                .translate(-node.x!, -node.y!);
+
+            return new Promise<void>((resolve) => {
+                selectionRef.current!
+                    .transition()
+                    .duration(duration)
+                    .ease(d3.easeExpIn) // Accelerate into the warp
+                    .call(zoomBehaviorRef.current!.transform as any, transform)
+                    .on("end", () => resolve());
+            });
+        }
+    }));
 
     // Init Simulation
     const { simulationRef, nodesRef, containerRadius, simulationBounds } = useMusicSimulation({
@@ -87,8 +141,13 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
 
             // Pan limits: Allow 50% padding around the viewport
             // Prevents losing the galaxy entirely
-            const panPadding = Math.min(dimensions.width, dimensions.height) * 0.8;
-            extent = [[-panPadding, -panPadding], [dimensions.width + panPadding, dimensions.height + panPadding]];
+            // const panPadding = Math.min(dimensions.width, dimensions.height) * 0.8;
+            // extent = [[-panPadding, -panPadding], [dimensions.width + panPadding, dimensions.height + panPadding]];
+
+            // REVISION: Unlimited Pan for "Warp" Effect
+            // To zoom into a specific node that might be anywhere, we need to allow panning.
+            // We'll trust the user/code not to lose the galaxy.
+            extent = [[-Infinity, -Infinity], [Infinity, Infinity]];
 
         } else {
             // CLUSTER MODE: Strict "Infinite Canvas" Lock
@@ -142,8 +201,49 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
         const selection = d3.select(canvas);
         selection.call(zoom as any);
 
+        // --- EXPOSE ACTIONS ---
+        // We do this inside the Effect because 'zoom' and 'selection' are created here.
+        // But we need to update the ref. A common pattern is to use a mutable ref for the API.
+        // However, standard useImperativeHandle runs outside this closure.
+        // Alternative: Assign to a ref that useImperativeHandle reads, or put this logic in a robust useEffect.
+        // But simpler: just define the function here and assign it to a ref we can call from useImperativeHandle.
+
+        // We'll use a unique ID for the "current zoom instance" to avoid stale closures if possible,
+        // but since this Effect completely recreates the zoom on deps change, it's safer to just
+        // store the "zoomTo" function in a ref.
+
+        // Let's store the SELECTION in a ref, since we already have it.
+        // We also need the ZOOM behavior object.
+        zoomBehaviorRef.current = zoom;
+        selectionRef.current = selection as any;
+
+
         // --- STATE SYNC & AUTO-ZOOM ---
-        if (mode !== prevMode.current) {
+        // Handle "Entry Transition" (Genie Effect Part 2: Zoom Out Reveal)
+        if (enableEntryTransition && mode === 'CLUSTER' && prevMode.current !== 'CLUSTER') {
+            // Start "Inside" the bubble (Zoomed In)
+            const zoomedInScale = startScale * 1.5; // Start 1.5x closer (Subtle reveal)
+            const initialTransform = d3.zoomIdentity
+                .translate(cx, cy)
+                .scale(zoomedInScale)
+                .translate(-cx, -cy);
+
+            // Apply immediately
+            selection.call(zoom.transform as any, initialTransform);
+            transformRef.current = initialTransform;
+
+            // Animate out to "Fit"
+            const targetTransform = d3.zoomIdentity
+                .translate(cx, cy)
+                .scale(startScale)
+                .translate(-cx, -cy);
+
+            selection.transition()
+                .duration(1200) // Slow, smooth reveal
+                .ease(d3.easeCubicOut)
+                .call(zoom.transform as any, targetTransform);
+        }
+        else if (mode !== prevMode.current) {
             if (prevMode.current === 'GLOBAL' && mode === 'CLUSTER') {
                 // Entering Cluster: Save Global, Auto-Zoom to Fill
                 savedGlobalTransform.current = transformRef.current;
@@ -168,6 +268,8 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
             }
             prevMode.current = mode;
         }
+
+
 
 
         const getHoveredNode = (e: MouseEvent): SimulationNode | null => {
@@ -553,4 +655,6 @@ export default function MusicCanvas({ nodes, onNodeClick, onBackgroundClick, mod
             </div>
         </div>
     );
-}
+});
+
+export default MusicCanvas;

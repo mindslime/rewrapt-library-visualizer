@@ -1,21 +1,30 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from "react";
 import { GenreNode, SpotifyTrack } from "@/types/spotify";
-import MusicCanvas from "./MusicCanvas";
+import MusicCanvas, { MusicCanvasRef } from "./MusicCanvas";
 import { ArrowLeft, X } from "lucide-react";
+
+export interface GenreMapRef {
+    goBack: () => void;
+}
 
 interface GenreMapProps {
     data: GenreNode[];
     contextType?: 'library' | 'playlist';
     onColorChange?: (color: string | null) => void;
+    onDrillDown?: (name: string) => void;
+    onBackToGalaxy?: () => void;
 }
 
-export default function GenreMap({ data, contextType = 'library', onColorChange }: GenreMapProps) {
+const GenreMap = forwardRef<GenreMapRef, GenreMapProps>(({ data, contextType = 'library', onColorChange, onDrillDown, onBackToGalaxy }, ref) => {
     const [viewMode, setViewMode] = useState<'GLOBAL' | 'CLUSTER'>('GLOBAL');
     const [activeData, setActiveData] = useState<GenreNode[]>(data);
     const [selectedGenre, setSelectedGenre] = useState<GenreNode | null>(null);
     const [selectedArtist, setSelectedArtist] = useState<GenreNode | null>(null); // For Modal
+    const [isNavigating, setIsNavigating] = useState(false);
+
+    const musicCanvasRef = useRef<MusicCanvasRef>(null);
 
     // Sync with prop updates (e.g. data load)
     useEffect(() => {
@@ -24,30 +33,47 @@ export default function GenreMap({ data, contextType = 'library', onColorChange 
         }
     }, [data, viewMode, selectedGenre]);
 
-    const handleNodeClick = useCallback((node: GenreNode) => {
+    const handleBack = useCallback(() => {
+        if (viewMode === 'CLUSTER') {
+            setViewMode('GLOBAL');
+            setActiveData(data); // Restore global
+            setSelectedGenre(null);
+            onColorChange?.(null);
+            onBackToGalaxy?.();
+        }
+    }, [viewMode, data, onColorChange, onBackToGalaxy]);
+
+    useImperativeHandle(ref, () => ({
+        goBack: handleBack
+    }));
+
+    const handleNodeClick = useCallback(async (node: GenreNode) => {
         if (viewMode === 'GLOBAL') {
             // Drill down to Genre -> Artists
             if (node.children && node.children.length > 0) {
+                if (isNavigating) return;
+                setIsNavigating(true);
+
+                // 1. Zoom/Warp into the node
+                if (musicCanvasRef.current) {
+                    await musicCanvasRef.current.zoomToNode(node as any, 600);
+                }
+
+                // 2. Switch State
                 setSelectedGenre(node);
                 setActiveData(node.children);
                 setViewMode('CLUSTER');
                 onColorChange?.(node.color || null);
+                onDrillDown?.(node.name);
+
+                setIsNavigating(false);
             }
         } else if (viewMode === 'CLUSTER') {
             // Clicked an Artist -> Show Detail Modal
             setSelectedArtist(node);
             onColorChange?.(node.color || null);
         }
-    }, [viewMode]);
-
-    const handleBack = () => {
-        if (viewMode === 'CLUSTER') {
-            setViewMode('GLOBAL');
-            setActiveData(data); // Restore global
-            setSelectedGenre(null);
-            onColorChange?.(null);
-        }
-    };
+    }, [viewMode, onColorChange, onDrillDown, isNavigating]);
 
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'added_at', direction: 'asc' });
 
@@ -93,27 +119,20 @@ export default function GenreMap({ data, contextType = 'library', onColorChange 
         <div className="w-full h-full relative">
             {/* Canvas Layer */}
             <MusicCanvas
+                ref={musicCanvasRef}
                 nodes={activeData}
                 mode={viewMode}
                 onNodeClick={handleNodeClick}
+                enableEntryTransition={true}
             />
 
-            {/* Navigation Overlay */}
-            {viewMode === 'CLUSTER' && selectedGenre && (
-                <div className="absolute top-4 left-4 z-10 flex items-center gap-4">
-                    <button
-                        onClick={handleBack}
-                        className="group relative flex items-center gap-2 bg-black/50 hover:bg-black/80 text-white px-4 py-2 rounded-full backdrop-blur-md border border-white/20 transition-all overflow-hidden"
-                    >
-                        <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1s_forwards]" />
-                        <ArrowLeft className="w-4 h-4 relative z-10" />
-                        <span className="relative z-10">Back to Galaxy</span>
-                    </button>
-                    <h2 className="text-2xl font-bold text-white shadow-black drop-shadow-md">
-                        {selectedGenre.name}
-                    </h2>
-                </div>
-            )}
+            {/* Navigation Overlay - MOVED TO PARENT */}
+            {/* {viewMode === 'CLUSTER' && selectedGenre && (
+               <div className="absolute top-4 left-4 z-10 flex items-center gap-4">
+                   <button onClick={handleBack} ...> ... </button>
+                   <h2>{selectedGenre.name}</h2>
+               </div>
+            )} */}
 
             {/* Song Detail Modal (Artist) */}
             {selectedArtist && (
@@ -130,9 +149,6 @@ export default function GenreMap({ data, contextType = 'library', onColorChange 
                         <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900">
                             <div>
                                 <h2 className="text-2xl font-bold text-white">{selectedArtist.name}</h2>
-                                <p className="text-sm text-zinc-400 mt-1">
-                                    {selectedArtist.count} tracks in this collection
-                                </p>
                             </div>
                             <button
                                 onClick={() => {
@@ -213,7 +229,10 @@ export default function GenreMap({ data, contextType = 'library', onColorChange 
             )}
         </div>
     );
-}
+});
+
+GenreMap.displayName = "GenreMap";
+export default GenreMap;
 
 function formatDuration(ms: number) {
     const minutes = Math.floor(ms / 60000);
