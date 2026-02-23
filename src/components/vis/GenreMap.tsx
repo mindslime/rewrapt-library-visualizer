@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useR
 import { GenreNode, SpotifyTrack } from "@/types/spotify";
 import MusicCanvas, { MusicCanvasRef } from "./MusicCanvas";
 import { ArrowLeft, X } from "lucide-react";
+import { SimulationNode } from "@/hooks/useMusicSimulation";
 
 export interface GenreMapRef {
     goBack: () => void;
@@ -34,6 +35,9 @@ const GenreMap = forwardRef<GenreMapRef, GenreMapProps>(({ data, contextType = '
     }, [data, viewMode, selectedGenre]);
 
     const handleBack = useCallback(() => {
+        // Block back navigation if the artist modal is open
+        if (selectedArtist) return;
+
         if (viewMode === 'CLUSTER') {
             setViewMode('GLOBAL');
             setActiveData(data); // Restore global
@@ -41,22 +45,24 @@ const GenreMap = forwardRef<GenreMapRef, GenreMapProps>(({ data, contextType = '
             onColorChange?.(null);
             onBackToGalaxy?.();
         }
-    }, [viewMode, data, onColorChange, onBackToGalaxy]);
+    }, [viewMode, data, selectedArtist, onColorChange, onBackToGalaxy]);
 
     useImperativeHandle(ref, () => ({
         goBack: handleBack
     }));
 
-    const handleNodeClick = useCallback(async (node: GenreNode) => {
+    const handleNodeClick = useCallback(async (simNode: SimulationNode) => {
+        const node = simNode.data as GenreNode;
+
         if (viewMode === 'GLOBAL') {
             // Drill down to Genre -> Artists
             if (node.children && node.children.length > 0) {
                 if (isNavigating) return;
                 setIsNavigating(true);
 
-                // 1. Zoom/Warp into the node
+                // 1. Zoom/Warp into the node (Now triggers DOM overlay)
                 if (musicCanvasRef.current) {
-                    await musicCanvasRef.current.zoomToNode(node as any, 600);
+                    await musicCanvasRef.current.zoomToNode(simNode, 1500);
                 }
 
                 // 2. Switch State

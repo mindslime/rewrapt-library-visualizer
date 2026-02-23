@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import * as d3 from 'd3';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useMusicSimulation, SimulationNode } from '@/hooks/useMusicSimulation';
 import { GenreNode } from '@/types/spotify';
 import { PILLARS, PILLAR_COORDINATES } from '@/utils/spotifyTransform';
@@ -12,7 +13,7 @@ export interface MusicCanvasRef {
 
 interface MusicCanvasProps {
     nodes: GenreNode[];
-    onNodeClick?: (node: GenreNode) => void;
+    onNodeClick?: (node: SimulationNode) => void;
     onBackgroundClick?: () => void;
     mode?: 'GLOBAL' | 'CLUSTER';
     enableEntryTransition?: boolean;
@@ -23,6 +24,12 @@ const MusicCanvas = forwardRef<MusicCanvasRef, MusicCanvasProps>(({ nodes, onNod
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0, dpr: 1 });
 
+    // Latest Callbacks Ref to prevent stale closures without triggering re-renders
+    const callbacksRef = useRef({ onNodeClick, onBackgroundClick });
+    useEffect(() => {
+        callbacksRef.current = { onNodeClick, onBackgroundClick };
+    }, [onNodeClick, onBackgroundClick]);
+
     // Zoom State
     const transformRef = useRef(d3.zoomIdentity); // { k, x, y }
     const savedGlobalTransform = useRef(d3.zoomIdentity);
@@ -32,47 +39,51 @@ const MusicCanvas = forwardRef<MusicCanvasRef, MusicCanvasProps>(({ nodes, onNod
     const zoomBehaviorRef = useRef<d3.ZoomBehavior<Element, unknown> | null>(null);
     const selectionRef = useRef<d3.Selection<HTMLCanvasElement, unknown, null, undefined> | null>(null);
 
+    // Overlay State
+    const [transitionOverlay, setTransitionOverlay] = useState<{
+        x: number;
+        y: number;
+        r: number;
+        color: string;
+        name: string;
+    } | null>(null);
+
     // --- IMPERATIVE API ---
     useImperativeHandle(ref, () => ({
-        zoomToNode: async (node: SimulationNode, duration = 750) => {
-            if (!selectionRef.current || !zoomBehaviorRef.current) return;
+        zoomToNode: async (node: SimulationNode, duration = 1200) => {
+            if (!containerRef.current || !transformRef.current) return;
 
-            const width = dimensions.width;
-            const height = dimensions.height;
+            // 1. Get exact screen coordinates of the node based on current zoom transform
+            const { k, x, y } = transformRef.current;
+            const screenX = (node.x! * k) + x;
+            const screenY = (node.y! * k) + y;
+            const screenR = node.radius * k;
 
-            // Target Scale: Fill ~60% of screen with the bubble diameter
-            // node.radius is visual radius.
-            // At scale 1, diameter = node.radius * 2.
-            // We want (node.radius * 2 * k) = minDim * 0.6
-            // k = (minDim * 0.6) / (node.radius * 2)
-            const minDim = Math.min(width, height);
+            // 2. Trigger Overlay
+            console.log("TRIGGERING OVERLAY WITH:", {
+                x: screenX,
+                y: screenY,
+                r: screenR,
+                name: node.name,
+                color: node.color,
+                k,
+                canvasWidth: canvasRef.current?.width,
+                canvasHeight: canvasRef.current?.height,
+                containerDims: dimensions
+            });
+            setTransitionOverlay({
+                x: screenX,
+                y: screenY,
+                r: screenR,
+                color: node.color,
+                name: node.name
+            });
 
-            // FILL FACTOR: 1.5x (150% coverage) to ensure we are "inside" the bubble color
-            // Use maximum of 1 to prevent invalid math
-            const safeRadius = Math.max(1, node.radius);
-            const targetScale = (minDim * 1.5) / (safeRadius * 2);
-
-            // UNLOCK ZOOM LIMITS:
-            // Standard limit is 8x. Small bubbles need 50x+ to fill screen.
-            // We temporarily boost the limit on the behavior instance.
-            if (zoomBehaviorRef.current) {
-                zoomBehaviorRef.current.scaleExtent([0.1, Math.max(100, targetScale * 1.2)]);
-            }
-
-            // Center the node
-            // translate(width/2, height/2).scale(k).translate(-node.x, -node.y)
-            const transform = d3.zoomIdentity
-                .translate(width / 2, height / 2)
-                .scale(targetScale)
-                .translate(-node.x!, -node.y!);
-
+            // 3. Wait for the CSS/Framer animation to finish before updating state
             return new Promise<void>((resolve) => {
-                selectionRef.current!
-                    .transition()
-                    .duration(duration)
-                    .ease(d3.easeExpIn) // Accelerate into the warp
-                    .call(zoomBehaviorRef.current!.transform as any, transform)
-                    .on("end", () => resolve());
+                setTimeout(() => {
+                    resolve();
+                }, 1000); // Swap at ~50% when overlay fully covers screen
             });
         }
     }));
@@ -219,31 +230,7 @@ const MusicCanvas = forwardRef<MusicCanvasRef, MusicCanvasProps>(({ nodes, onNod
 
 
         // --- STATE SYNC & AUTO-ZOOM ---
-        // Handle "Entry Transition" (Genie Effect Part 2: Zoom Out Reveal)
-        if (enableEntryTransition && mode === 'CLUSTER' && prevMode.current !== 'CLUSTER') {
-            // Start "Inside" the bubble (Zoomed In)
-            const zoomedInScale = startScale * 1.5; // Start 1.5x closer (Subtle reveal)
-            const initialTransform = d3.zoomIdentity
-                .translate(cx, cy)
-                .scale(zoomedInScale)
-                .translate(-cx, -cy);
-
-            // Apply immediately
-            selection.call(zoom.transform as any, initialTransform);
-            transformRef.current = initialTransform;
-
-            // Animate out to "Fit"
-            const targetTransform = d3.zoomIdentity
-                .translate(cx, cy)
-                .scale(startScale)
-                .translate(-cx, -cy);
-
-            selection.transition()
-                .duration(1200) // Slow, smooth reveal
-                .ease(d3.easeCubicOut)
-                .call(zoom.transform as any, targetTransform);
-        }
-        else if (mode !== prevMode.current) {
+        if (mode !== prevMode.current) {
             if (prevMode.current === 'GLOBAL' && mode === 'CLUSTER') {
                 // Entering Cluster: Save Global, Auto-Zoom to Fill
                 savedGlobalTransform.current = transformRef.current;
@@ -302,9 +289,9 @@ const MusicCanvas = forwardRef<MusicCanvasRef, MusicCanvasProps>(({ nodes, onNod
         const handleClick = (e: MouseEvent) => {
             const clicked = getHoveredNode(e);
             if (clicked) {
-                onNodeClick?.(clicked.data);
+                callbacksRef.current.onNodeClick?.(clicked); // Pass the full SimulationNode to preserve x/y/radius
             } else {
-                onBackgroundClick?.();
+                callbacksRef.current.onBackgroundClick?.();
             }
         };
 
@@ -635,7 +622,11 @@ const MusicCanvas = forwardRef<MusicCanvasRef, MusicCanvasProps>(({ nodes, onNod
             cancelAnimationFrame(animationFrameId);
             selection.on(".zoom", null); // Clean up zoom
         };
-    }, [dimensions, mode, containerRadius, simulationBounds]);
+        // Removed `onNodeClick` from deps because its identity changes during animation scheduling
+        // (when `isNavigating` toggles in Parent), causing premature Canvas teardown.
+    }, [nodes, dimensions, mode]); // Re-run when these props change
+
+    // (Removed buggy Cleanup Overlay effect that was killing the animation)
 
     return (
         <div ref={containerRef} className="w-full h-full relative bg-zinc-950 overflow-hidden">
@@ -646,6 +637,119 @@ const MusicCanvas = forwardRef<MusicCanvasRef, MusicCanvasProps>(({ nodes, onNod
                 style={{ width: dimensions.width, height: dimensions.height }}
                 className="block cursor-move"
             />
+
+            {/* Transition overlay — rendered AFTER canvas so it layers on top */}
+            <AnimatePresence>
+                {transitionOverlay && (() => {
+                    const maxDim = Math.max(dimensions.width, dimensions.height) * 2.5;
+
+                    return (
+                        <>
+                            <motion.div
+                                key="transition-overlay"
+                                initial={{
+                                    left: (transitionOverlay?.x || 0) - (transitionOverlay?.r || 0),
+                                    top: (transitionOverlay?.y || 0) - (transitionOverlay?.r || 0),
+                                    width: (transitionOverlay?.r || 0) * 2,
+                                    height: (transitionOverlay?.r || 0) * 2,
+                                    borderRadius: '50%',
+                                    opacity: 1
+                                }}
+                                animate={{
+                                    left: [
+                                        (transitionOverlay?.x || 0) - (transitionOverlay?.r || 0),
+                                        dimensions.width / 2 - maxDim / 2,
+                                        dimensions.width / 2 - maxDim / 2,
+                                        0,
+                                        0
+                                    ],
+                                    top: [
+                                        (transitionOverlay?.y || 0) - (transitionOverlay?.r || 0),
+                                        dimensions.height / 2 - maxDim / 2,
+                                        dimensions.height / 2 - maxDim / 2,
+                                        0,
+                                        0
+                                    ],
+                                    width: [
+                                        (transitionOverlay?.r || 0) * 2,
+                                        maxDim,
+                                        maxDim,
+                                        dimensions.width,
+                                        dimensions.width
+                                    ],
+                                    height: [
+                                        (transitionOverlay?.r || 0) * 2,
+                                        maxDim,
+                                        maxDim,
+                                        dimensions.height,
+                                        128
+                                    ],
+                                    borderTopLeftRadius: ['50%', '50%', '50%', '0%', '0%'],
+                                    borderTopRightRadius: ['50%', '50%', '50%', '0%', '0%'],
+                                    borderBottomLeftRadius: ['50%', '50%', '50%', '0%', '0%'],
+                                    borderBottomRightRadius: ['50%', '50%', '50%', '0%', '0%'],
+                                    opacity: [1, 1, 1, 1, 0]
+                                }}
+                                transition={{
+                                    duration: 2.0,
+                                    times: [0, 0.5, 0.64, 0.65, 1],
+                                    ease: [[0.22, 1, 0.36, 1], "linear", "linear", [0.4, 0, 0.2, 1]]
+                                }}
+                                onAnimationComplete={() => setTransitionOverlay(null)}
+                                className="pointer-events-none absolute z-[150]"
+                                style={{
+                                    background: `linear-gradient(to bottom, ${transitionOverlay?.color || 'transparent'} 0%, ${transitionOverlay?.color || 'transparent'} 60%, transparent 100%)`
+                                }}
+                            />
+                            {/* Genre Title — zooms to center */}
+                            <motion.div
+                                key="transition-title"
+                                initial={{
+                                    left: transitionOverlay?.x || 0,
+                                    top: transitionOverlay?.y || 0,
+                                    x: '-50%',
+                                    y: '-50%',
+                                    scale: 0.5,
+                                    opacity: 0
+                                }}
+                                animate={{
+                                    left: [
+                                        transitionOverlay?.x || 0,
+                                        dimensions.width / 2,
+                                        dimensions.width / 2,
+                                        dimensions.width / 2,
+                                        dimensions.width / 2
+                                    ],
+                                    top: [
+                                        transitionOverlay?.y || 0,
+                                        dimensions.height / 2,
+                                        dimensions.height / 2,
+                                        dimensions.height / 2,
+                                        40
+                                    ],
+                                    scale: [0.5, 1.2, 1.2, 1.0, 0.35],
+                                    opacity: [0, 1, 1, 1, 0]
+                                }}
+                                transition={{
+                                    duration: 2.0,
+                                    times: [0, 0.5, 0.64, 0.65, 1],
+                                    ease: [[0.22, 1, 0.36, 1], "linear", "linear", [0.4, 0, 0.2, 1]]
+                                }}
+                                className="pointer-events-none absolute z-[151] flex items-center justify-center"
+                            >
+                                <span className="text-white font-bold drop-shadow-2xl"
+                                    style={{
+                                        fontFamily: 'sans-serif',
+                                        fontSize: 'clamp(2rem, 6vw, 4rem)',
+                                        textShadow: '0 4px 20px rgba(0,0,0,0.5)'
+                                    }}>
+                                    {transitionOverlay?.name}
+                                </span>
+                            </motion.div>
+                        </>
+                    );
+                })()}
+            </AnimatePresence>
 
             {/* Overlay UI (optional) */}
             <div className="absolute top-4 right-4 pointer-events-none md:hidden">

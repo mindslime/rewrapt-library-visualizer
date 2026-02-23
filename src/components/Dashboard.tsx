@@ -12,7 +12,7 @@ import { getCachedTracks, saveTracksToCache, checkTrackExists, getCachedArtists,
 import { GenreNode, SpotifyPlaylist, SpotifyTrack, SpotifyArtist } from "@/types/spotify";
 import { transformTracksToNodes } from "@/utils/spotifyTransform";
 import { useDemoMode } from "@/context/DemoContext";
-import { DEMO_PROFILE, DEMO_PLAYLISTS, DEMO_TRACKS, DEMO_ARTISTS } from "@/data/demo-data";
+import { DEMO_PROFILE, DEMO_PLAYLISTS, DEMO_TRACKS, DEMO_ARTISTS, getDemoPlaylistTracks } from "@/data/demo-data";
 
 interface DashboardProps {
     onDetailViewChange?: (isOpen: boolean) => void;
@@ -174,9 +174,8 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                 // Simulate network delay for effect
                 await new Promise(resolve => setTimeout(resolve, 800));
 
-                // For demo, we just return the same demo tracks for any playlist
-                // In a real app we might filter or have different sets
-                tracks = DEMO_TRACKS;
+                // For demo, we filter the tracks so they match the chosen playlist theme
+                tracks = getDemoPlaylistTracks(playlist.id);
 
                 // We also need to mock the artists map for the transformer
                 const artistMap = new Map(DEMO_ARTISTS.map(a => [a.id, a]));
@@ -185,6 +184,8 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                 setArtistDetails(artistMap);
                 const nodes = transformTracksToNodes(tracks, artistMap);
                 setGenreData(nodes);
+                setLoading(false);
+                setProgress(null);
             } else {
                 tracks = await fetchPlaylistTracks(session!.accessToken!, playlist.id, (current, total) => {
                     if (!signal.aborted) setProgress({ current, total });
@@ -229,6 +230,8 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                 setArtistDetails(artistMap);
                 const nodes = transformTracksToNodes(tracks, artistMap);
                 setGenreData(nodes);
+                setLoading(false);
+                setProgress(null);
             } else {
                 setLoadingStatus("Checking cache...");
                 const cachedTracks = await getCachedTracks();
@@ -348,23 +351,20 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                 <header className="absolute top-0 left-0 right-0 z-[120]">
                     <motion.div
                         key={drillDownTitle || "header-bg"}
-                        initial={drillDownTitle ? { height: "100vh", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, opacity: 1 } : { height: "8rem", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, opacity: 1 }}
+                        initial={{ height: "8rem", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, opacity: 1 }}
                         animate={{
                             height: "8rem",
-                            // "Liquid" retraction: Curve the bottom edge as it goes up
-                            borderBottomLeftRadius: ["0%", "50%", "0%"],
-                            borderBottomRightRadius: ["0%", "50%", "0%"],
+                            borderBottomLeftRadius: "0%",
+                            borderBottomRightRadius: "0%",
                             opacity: 1
                         }}
                         transition={{
-                            duration: 1.0,
-                            times: [0, 0.6, 1], // Sync the curve with the movement
-                            ease: [0.22, 1, 0.36, 1] // Custom cubic-bezier for "snappy ending"
+                            duration: 0.5,
+                            ease: "easeOut"
                         }}
                         className="absolute top-0 left-0 right-0 backdrop-blur-xl pointer-events-none"
                         style={{
                             background: getGradientStyle(navColor),
-                            // We keep the mask but it stretches with height, creating a nice "lifting fog" effect
                             maskImage: 'linear-gradient(to bottom, black 0%, transparent 100%)',
                             WebkitMaskImage: 'linear-gradient(to bottom, black 0%, transparent 100%)'
                         }}

@@ -95,7 +95,7 @@ export default function WaitlistForm() {
                             </motion.p>
                         )}
                         <p className="text-[10px] text-zinc-600">
-                            We'll simplify your library and help you rediscover your music.
+                            Unable to login with Spotify? Enter your email for access to the app.
                         </p>
                     </motion.form>
                 )}

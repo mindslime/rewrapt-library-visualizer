@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { Resend } from "resend";
 
+const resend = new Resend(process.env.RESEND_API_KEY);
 export async function POST(req: NextRequest) {
     try {
         const { email } = await req.json();
@@ -39,8 +41,22 @@ export async function POST(req: NextRequest) {
         fs.writeFileSync(waitlistPath, JSON.stringify(currentList, null, 2), "utf-8");
 
         // Placeholder for Email Notification service
-        // await sendNotificationEmail(email);
-
+        try {
+            if (process.env.RESEND_API_KEY && process.env.NOTIFICATION_EMAIL) {
+                await resend.emails.send({
+                    from: "ReWrapt Waitlist <onboarding@resend.dev>",
+                    to: process.env.NOTIFICATION_EMAIL,
+                    subject: "New Waitlist Signup!",
+                    html: `<p>A new user joined the waitlist: <strong>${email}</strong></p>
+                           <p><a href="https://developer.spotify.com/dashboard/1f4feae43ca44fb9ba39f47ece7e6cbc/users">Click here to access ReWrapt dashboard</a></p>`
+                });
+            } else {
+                console.warn("Resend API key or Notification Email not set. Skipping email notification.");
+            }
+        } catch (emailError) {
+            console.error("Waitlist email notification failed:", emailError);
+            // Do not block the successful waitlist signup response
+        }
         return NextResponse.json({ message: "Successfully added to waitlist" }, { status: 200 });
 
     } catch (error) {
