@@ -1,8 +1,8 @@
-# Spotify ReWrapt 🎵
+# ReWrapt 🎵
 
 Visualize your music library. Explore genres, eras, and your taste evolution through stunning interactive data visualizations.
 
-**Spotify ReWrapt** is a Next.js web application that connects with the Spotify API to analyze and visualize your listening habits. It transforms your playlists and top tracks into dynamic, interconnected graphs and timelines.
+**ReWrapt** is a Next.js web application that connects with the Spotify API to analyze and visualize your listening habits. It transforms your playlists and top tracks into dynamic, interconnected graphs and timelines.
 
 ## ✨ Features
 
