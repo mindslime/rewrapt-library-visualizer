@@ -6,13 +6,17 @@ import WaitlistForm from "@/components/WaitlistForm";
 import AnimatedTitle from "@/components/AnimatedTitle";
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
+import { TourOverlay } from "@/components/tour/TourOverlay";
+import { FTUEProvider, useFTUE } from "@/hooks/useFTUE";
 
 import { DemoProvider, useDemoMode } from "@/context/DemoContext";
 
 export default function Home() {
   return (
     <DemoProvider>
-      <HomeContent />
+      <FTUEProvider>
+        <HomeContent />
+      </FTUEProvider>
     </DemoProvider>
   );
 }
@@ -132,6 +136,8 @@ function HomeContent() {
       : 'min-h-screen overflow-x-hidden'
       }`}>
 
+      <TourOverlay />
+
       {/* Responsive Header / Navbar - Only show when logged in */}
       {showContent && (
         <header
@@ -146,11 +152,13 @@ function HomeContent() {
             : ''
             }`}>
             {showContent ? (
-              <AnimatedTitle
-                text="ReWrapt"
-                variant="navbar"
-                className="text-xl text-white"
-              />
+              <div className="pointer-events-auto">
+                <AnimatedTitle
+                  text="ReWrapt"
+                  variant="navbar"
+                  className="text-xl text-white"
+                />
+              </div>
             ) : (
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
                 Spotify ReWrapt
@@ -177,11 +185,13 @@ function HomeContent() {
             }}
           >
             {showContent ? (
-              <AnimatedTitle
-                text="ReWrapt"
-                variant="navbar"
-                className="text-2xl text-white"
-              />
+              <div className="pointer-events-auto">
+                <AnimatedTitle
+                  text="ReWrapt"
+                  variant="navbar"
+                  className="text-2xl text-white"
+                />
+              </div>
             ) : (
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
                 Spotify ReWrapt

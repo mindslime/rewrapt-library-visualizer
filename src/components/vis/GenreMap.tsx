@@ -5,6 +5,8 @@ import { GenreNode, SpotifyTrack } from "@/types/spotify";
 import MusicCanvas, { MusicCanvasRef } from "./MusicCanvas";
 import { ArrowLeft, X } from "lucide-react";
 import { SimulationNode } from "@/hooks/useMusicSimulation";
+import { useFTUE } from "@/hooks/useFTUE";
+import { TOUR_STEPS } from "@/data/tour-steps";
 
 export interface GenreMapRef {
     goBack: () => void;
@@ -51,13 +53,31 @@ const GenreMap = forwardRef<GenreMapRef, GenreMapProps>(({ data, contextType = '
         goBack: handleBack
     }));
 
+    const { currentStepIndex, isTourActive, nextStep } = useFTUE();
+
     const handleNodeClick = useCallback(async (simNode: SimulationNode) => {
+        // Prevent interaction if tour is active and the step forbids it
+        const currentStep = TOUR_STEPS[currentStepIndex];
+
+        // Step 6 special case: It REQUIRES action (drill down), so we don't return early if it's that step
+        // However, we DO return early for Step 5 and Step 7 because those have preventDrillDown: true
+        if (isTourActive && currentStep?.preventDrillDown) {
+            console.log("Drill-down prevented by FTUE Step:", currentStep.id);
+            return;
+        }
+
         const node = simNode.data as GenreNode;
 
         if (viewMode === 'GLOBAL') {
             // Drill down to Genre -> Artists
             if (node.children && node.children.length > 0) {
                 if (isNavigating) return;
+
+                // Auto-advance tour if this step required this action
+                if (isTourActive && currentStep?.requiresAction && currentStep.id === "genre-drilldown") {
+                    nextStep(TOUR_STEPS.length);
+                }
+
                 setIsNavigating(true);
 
                 // 1. Zoom/Warp into the node (Now triggers DOM overlay)
@@ -79,7 +99,7 @@ const GenreMap = forwardRef<GenreMapRef, GenreMapProps>(({ data, contextType = '
             setSelectedArtist(node);
             onColorChange?.(node.color || null);
         }
-    }, [viewMode, onColorChange, onDrillDown, isNavigating]);
+    }, [viewMode, onColorChange, onDrillDown, isNavigating, isTourActive, currentStepIndex, nextStep]);
 
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'added_at', direction: 'asc' });
 
@@ -122,7 +142,7 @@ const GenreMap = forwardRef<GenreMapRef, GenreMapProps>(({ data, contextType = '
     };
 
     return (
-        <div className="w-full h-full relative">
+        <div className="w-full h-full relative" data-tour="map-canvas">
             {/* Canvas Layer */}
             <MusicCanvas
                 ref={musicCanvasRef}

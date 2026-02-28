@@ -14,13 +14,15 @@ interface AnimatedTitleProps {
     className?: string;
     variant?: 'hero' | 'navbar';
     animationSpeed?: number; // seconds per cycle
+    onClick?: () => void;
 }
 
 export default function AnimatedTitle({
     text,
     className = "",
     variant = 'hero',
-    animationSpeed
+    animationSpeed,
+    onClick
 }: AnimatedTitleProps) {
     const [isVisible, setIsVisible] = useState(false);
 
@@ -54,7 +56,8 @@ export default function AnimatedTitle({
 
     return (
         <div
-            className={`${robotoFlex.className} flex flex-wrap justify-center overflow-visible ${variant === 'hero' ? 'p-4' : 'p-0'} ${className}`}
+            onClick={onClick}
+            className={`${robotoFlex.className} flex flex-wrap justify-center overflow-visible ${variant === 'hero' ? 'p-4' : 'p-0'} ${className} relative z-50`}
             style={{
                 ...(variant === 'hero' ? {
                     maskImage: 'linear-gradient(to right, black 40%, transparent 60%)',

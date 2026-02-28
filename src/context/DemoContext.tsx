@@ -13,8 +13,23 @@ const DemoContext = createContext<DemoContextType | undefined>(undefined);
 export function DemoProvider({ children }: { children: ReactNode }) {
     const [isDemoMode, setIsDemoMode] = useState(false);
 
-    const enableDemoMode = () => setIsDemoMode(true);
-    const disableDemoMode = () => setIsDemoMode(false);
+    // Load initial state from localStorage on mount
+    React.useEffect(() => {
+        const stored = localStorage.getItem('rewrapped_demo_mode');
+        if (stored === 'true') {
+            setIsDemoMode(true);
+        }
+    }, []);
+
+    const enableDemoMode = () => {
+        setIsDemoMode(true);
+        localStorage.setItem('rewrapped_demo_mode', 'true');
+    };
+
+    const disableDemoMode = () => {
+        setIsDemoMode(false);
+        localStorage.removeItem('rewrapped_demo_mode');
+    };
 
     return (
         <DemoContext.Provider value={{ isDemoMode, enableDemoMode, disableDemoMode }}>

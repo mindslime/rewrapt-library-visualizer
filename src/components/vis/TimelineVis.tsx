@@ -616,8 +616,8 @@ export default function TimelineVis({ tracks, artistMap }: TimelineVisProps) {
     }, [processedData, dimensions]);
 
     return (
-        <div ref={containerRef} className="w-full h-full animate-in fade-in duration-500 relative bg-zinc-950/50 touch-none">
-            <svg ref={svgRef} className="w-full h-full block" />
+        <div ref={containerRef} className="w-full h-full animate-in fade-in duration-500 relative bg-zinc-950/50 touch-none" data-tour="timeline-container">
+            <svg ref={svgRef} className="w-full h-full block" data-tour="time-points" />
 
             {status && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 bg-zinc-950/80 p-6 text-center pointer-events-none">

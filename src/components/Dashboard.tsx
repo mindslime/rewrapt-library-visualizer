@@ -13,6 +13,8 @@ import { GenreNode, SpotifyPlaylist, SpotifyTrack, SpotifyArtist } from "@/types
 import { transformTracksToNodes } from "@/utils/spotifyTransform";
 import { useDemoMode } from "@/context/DemoContext";
 import { DEMO_PROFILE, DEMO_PLAYLISTS, DEMO_TRACKS, DEMO_ARTISTS, getDemoPlaylistTracks } from "@/data/demo-data";
+import { useFTUE } from "@/hooks/useFTUE";
+import { TOUR_STEPS } from "@/data/tour-steps";
 
 interface DashboardProps {
     onDetailViewChange?: (isOpen: boolean) => void;
@@ -23,6 +25,7 @@ interface DashboardProps {
 export default function Dashboard({ onDetailViewChange, onViewModeChange, onProfileImageLoaded }: DashboardProps) {
     const { data: session } = useSession();
     const { isDemoMode } = useDemoMode();
+    const { isTourActive, currentStepIndex, pauseTour, resumeTour, hasSeenTour, setIsReady } = useFTUE();
     const [profile, setProfile] = useState<any>(null);
     const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
 
@@ -136,6 +139,11 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
             setGenreData(nodes);
 
+            // If we are waiting for action, resume tour to the map steps
+            if (!hasSeenTour && currentStepIndex === 3) {
+                setTimeout(() => resumeTour(4), 500);
+            }
+
         } catch (e: any) {
             if (e.message === "Aborted" || e.name === "AbortError") {
                 console.log("Operation aborted");
@@ -155,6 +163,10 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
     const handlePlaylistClick = async (playlist: SpotifyPlaylist) => {
         if (!session?.accessToken && !isDemoMode) return;
+
+        if (isTourActive && currentStepIndex === 3) {
+            pauseTour();
+        }
 
         cancelOperations();
         const abortController = new AbortController();
@@ -186,6 +198,11 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                 setGenreData(nodes);
                 setLoading(false);
                 setProgress(null);
+
+                // FTUE: Resume tour to Map View (Step 5) after demo loading
+                if (!hasSeenTour && currentStepIndex === 3) {
+                    setTimeout(() => resumeTour(4), 500);
+                }
             } else {
                 tracks = await fetchPlaylistTracks(session!.accessToken!, playlist.id, (current, total) => {
                     if (!signal.aborted) setProgress({ current, total });
@@ -205,6 +222,10 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
     const handleLibraryClick = async () => {
         if (!session?.accessToken && !isDemoMode) return;
+
+        if (isTourActive && currentStepIndex === 3) {
+            pauseTour();
+        }
 
         cancelOperations();
         const abortController = new AbortController();
@@ -232,6 +253,11 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                 setGenreData(nodes);
                 setLoading(false);
                 setProgress(null);
+
+                // FTUE: Resume tour to Map View (Step 5) after demo loading
+                if (!hasSeenTour && currentStepIndex === 3) {
+                    setTimeout(() => resumeTour(4), 500);
+                }
             } else {
                 setLoadingStatus("Checking cache...");
                 const cachedTracks = await getCachedTracks();
@@ -305,6 +331,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
             if (DEMO_PROFILE.images[0]?.url) {
                 onProfileImageLoaded?.(DEMO_PROFILE.images[0].url);
             }
+            setIsReady(true);
         } else if (session?.accessToken) {
             fetch("https://api.spotify.com/v1/me", {
                 headers: { Authorization: `Bearer ${session.accessToken}` },
@@ -317,10 +344,56 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                     }
                 });
 
-            fetchUserPlaylists(session.accessToken).then(setPlaylists);
+            fetchUserPlaylists(session.accessToken).then((data) => {
+                setPlaylists(data);
+                setIsReady(true);
+            });
         }
-    }, [session, isDemoMode]);
+    }, [session, isDemoMode, setIsReady]);
 
+    // FTUE Tour Navigation Synchronization
+    useEffect(() => {
+        if (!isTourActive) return;
+
+        // Dashboard Steps: 0 (Welcome), 1 (Playlists), 2 (Analyze), 3 (Action/Dive In)
+        if (currentStepIndex <= 3) {
+            if (viewTitle !== null) {
+                // If we are on the Map but should be on the Dashboard
+                cancelOperations();
+                setViewTitle(null);
+                setNavColor(null);
+                setIsLibraryView(false);
+                setDrillDownTitle(null);
+            }
+        }
+        // Cluster Map Steps: 4 (Basics), 5 (Drill-down Action)
+        else if (currentStepIndex === 4 || currentStepIndex === 5) {
+            if (viewMode !== 'CLUSTER') {
+                setViewMode('CLUSTER');
+            }
+            // If we are on these early map steps but already inside a genre, go back
+            if (drillDownTitle) {
+                genreMapRef.current?.goBack();
+            }
+        }
+        // Step 6: Artist Clusters (index 6) - We SHOULD be inside a genre
+        else if (currentStepIndex === 6) {
+            if (viewMode !== 'CLUSTER') {
+                setViewMode('CLUSTER');
+            }
+        }
+        // Timeline Steps: 7 (Travel Through Time), 8 (Exact Moments)
+        else if (currentStepIndex >= 7 && currentStepIndex <= 8) {
+            if (viewMode !== 'TIMELINE') {
+                setViewMode('TIMELINE');
+                // Ensure we reset drill-down state if we were inside a genre
+                if (drillDownTitle) {
+                    setDrillDownTitle(null);
+                    setNavColor(null);
+                }
+            }
+        }
+    }, [isTourActive, currentStepIndex, viewTitle, viewMode]);
 
     if (!session && !isDemoMode) return null;
 
@@ -394,12 +467,13 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                                         setIsLibraryView(false);
                                     }
                                 }}
-                                className="p-1.5 md:p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0 group relative"
+                                disabled={isTourActive && TOUR_STEPS[currentStepIndex]?.disableBackToDashboard}
+                                className={`p-1.5 md:p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0 group relative ${isTourActive && TOUR_STEPS[currentStepIndex]?.disableBackToDashboard ? 'opacity-30 cursor-not-allowed' : ''}`}
                                 title={drillDownTitle ? "Return to Genres" : "Go Back"}
                             >
                                 <ChevronLeft className="w-5 h-5 md:w-6 md:h-6" />
                             </button>
-                            <div className="min-w-0">
+                            <div className="min-w-0" data-tour="genre-header">
                                 <h2 className="text-sm md:text-xl font-bold truncate">
                                     {drillDownTitle ? "Genre View" : viewTitle}
                                 </h2>
@@ -420,7 +494,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
                         <div className="flex-1" />
 
                         {/* View Switcher */}
-                        <div className="flex bg-[#181818]/80 backdrop-blur-md p-1 rounded-lg relative z-[101]">
+                        <div className={`flex bg-[#181818]/80 backdrop-blur-md p-1 rounded-lg relative z-[101] ${isTourActive && TOUR_STEPS[currentStepIndex]?.disableViewSwitcher ? 'opacity-50 pointer-events-none' : ''}`}>
                             <button
                                 onClick={() => setViewMode('CLUSTER')}
                                 className={`flex items-center justify-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all cursor-pointer ${viewMode === 'CLUSTER' ? "bg-[#333333] text-white shadow-sm" : "text-zinc-400 hover:text-white"
@@ -498,7 +572,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
     // --- RENDER: Dashboard Home ---
     return (
-        <div className="w-full max-w-6xl flex flex-col gap-6 sm:gap-8 mt-0 pb-20">
+        <div data-tour="action-container" className="w-full max-w-6xl flex flex-col gap-6 sm:gap-8 mt-0 pb-20">
             {/* Header Stats */}
             <motion.div
                 layout
@@ -543,6 +617,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
 
                     <motion.div layout className="flex flex-col gap-3 flex-shrink-0 w-full md:w-auto">
                         <button
+                            data-tour="analyze-button"
                             onClick={handleLibraryClick}
                             className="relative group overflow-hidden p-[1px] rounded-xl transition-all hover:scale-105 shadow-lg hover:shadow-[0_0_20px_2px_rgba(16,185,129,0.5)] w-full md:w-auto"
                         >
@@ -565,7 +640,7 @@ export default function Dashboard({ onDetailViewChange, onViewModeChange, onProf
             </motion.div>
 
             {/* Playlist Section */}
-            <div className="bg-[#121212] p-6 rounded-xl">
+            <div data-tour="playlists-section" className="bg-[#121212] p-6 rounded-xl">
                 <div className="flex items-center justify-between mb-6 px-2">
                     <h2 className="text-xl font-bold">Your Playlists</h2>
                     <div className="flex bg-zinc-800/50 p-1 rounded-lg border border-zinc-700/50">
