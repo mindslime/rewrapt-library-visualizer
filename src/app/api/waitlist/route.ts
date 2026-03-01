@@ -37,7 +37,11 @@ export async function POST(req: NextRequest) {
 
         currentList.push(newEntry);
 
-        fs.writeFileSync(waitlistPath, JSON.stringify(currentList, null, 2), "utf-8");
+        try {
+            fs.writeFileSync(waitlistPath, JSON.stringify(currentList, null, 2), "utf-8");
+        } catch (writeError) {
+            console.warn("Could not write to waitlist.json (normal in serverless read-only deployment):", writeError);
+        }
 
         // Placeholder for Email Notification service
         try {
