@@ -38,7 +38,7 @@ function ErrorContent() {
                     </div>
 
                     <div className="w-full max-w-md mt-4">
-                        <WaitlistForm />
+                        <WaitlistForm defaultShowForm={true} />
                     </div>
 
                     <div className="mt-8">

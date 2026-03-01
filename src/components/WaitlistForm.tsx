@@ -4,11 +4,11 @@ import { useState } from "react";
 import { Loader2, CheckCircle, ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function WaitlistForm() {
+export default function WaitlistForm({ defaultShowForm = false }: { defaultShowForm?: boolean } = {}) {
     const [email, setEmail] = useState("");
     const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
     const [message, setMessage] = useState("");
-    const [showForm, setShowForm] = useState(false);
+    const [showForm, setShowForm] = useState(defaultShowForm);
     const isTouchDevice = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
 
     const handleSubmit = async (e: React.FormEvent) => {
