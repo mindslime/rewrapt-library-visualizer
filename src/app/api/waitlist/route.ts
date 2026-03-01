@@ -45,17 +45,17 @@ export async function POST(req: NextRequest) {
 
         // Placeholder for Email Notification service
         try {
-            if (process.env.RESEND_API_KEY && process.env.NOTIFICATION_EMAIL) {
+            if (process.env.RESEND_API_KEY && process.env.NOTIFICATION_EMAIL && process.env.SPOTIFY_CLIENT_ID) {
                 const resend = new Resend(process.env.RESEND_API_KEY);
                 await resend.emails.send({
                     from: "ReWrapt Waitlist <onboarding@resend.dev>",
                     to: process.env.NOTIFICATION_EMAIL,
                     subject: "New Waitlist Signup!",
                     html: `<p>A new user joined the waitlist: <strong>${email}</strong></p>
-                           <p><a href="https://developer.spotify.com/dashboard/1f4feae43ca44fb9ba39f47ece7e6cbc/users">Click here to access ReWrapt dashboard</a></p>`
+                           <p><a href="https://developer.spotify.com/dashboard/${process.env.SPOTIFY_CLIENT_ID}/users">Click here to access ReWrapt dashboard</a></p>`
                 });
             } else {
-                console.warn("Resend API key or Notification Email not set. Skipping email notification.");
+                console.warn("Resend API key, Notification Email, or Spotify Client ID not set. Skipping email notification.");
             }
         } catch (emailError) {
             console.error("Waitlist email notification failed:", emailError);

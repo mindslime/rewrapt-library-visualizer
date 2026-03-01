@@ -21,7 +21,7 @@ function ErrorContent() {
                     />
 
                     <div className="flex flex-col gap-4 text-zinc-400 text-lg">
-                        {error === "AccessDenied" ? (
+                        {(error === "AccessDenied" || error === "OAuthCallback") ? (
                             <>
                                 <p>
                                     It looks like your Spotify account hasn't been added to our developer allowlist yet.

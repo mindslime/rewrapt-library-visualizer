@@ -4,10 +4,11 @@ import LoginButton from "@/components/LoginButton";
 import Dashboard from "@/components/Dashboard";
 import WaitlistForm from "@/components/WaitlistForm";
 import AnimatedTitle from "@/components/AnimatedTitle";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import { FTUEProvider, useFTUE } from "@/hooks/useFTUE";
+import { useSearchParams, useRouter } from "next/navigation";
 
 import { DemoProvider, useDemoMode } from "@/context/DemoContext";
 
@@ -19,6 +20,20 @@ export default function Home() {
       </FTUEProvider>
     </DemoProvider>
   );
+}
+
+function AuthErrorHandler() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const error = searchParams.get("error");
+
+  useEffect(() => {
+    if (error) {
+      router.push(`/error?error=${error}`);
+    }
+  }, [error, router]);
+
+  return null;
 }
 
 function HomeContent() {
@@ -137,6 +152,9 @@ function HomeContent() {
       }`}>
 
       <TourOverlay />
+      <Suspense fallback={null}>
+        <AuthErrorHandler />
+      </Suspense>
 
       {/* Responsive Header / Navbar - Only show when logged in */}
       {showContent && (
