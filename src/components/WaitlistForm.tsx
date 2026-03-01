@@ -16,7 +16,7 @@ export default function WaitlistForm() {
 
         if (!email || !email.includes("@")) {
             setStatus("error");
-            setMessage("Please enter a valid email address.");
+            setMessage("Please enter a valid Spotify email address.");
             return;
         }
 
@@ -84,7 +84,7 @@ export default function WaitlistForm() {
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="Enter your email to join waitlist"
+                                    placeholder="Enter your Spotify email to join waitlist"
                                     disabled={status === "loading"}
                                     className="w-full bg-zinc-900/50 border border-zinc-800 focus:border-green-500/50 rounded-lg px-4 py-3 outline-none text-white placeholder-zinc-500 transition-all focus:bg-zinc-900 disabled:opacity-50"
                                 />
